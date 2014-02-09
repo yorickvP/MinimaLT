@@ -133,6 +133,35 @@ var RPC = (function() {
 			var buffer = new Buffer(RPC.calculateLength(x))
 			RPC.serialize(x, buffer, 0)
 			return buffer
+		},
+		deserialize_rpc_payload: function(buffer) {
+			var RPCs = [], offset = 0, connection, d
+			while(buffer.length - offset > 4) {
+				connection = buffer.readUInt32BE(offset)
+				offset += 4
+				d = RPC.deserialize(buffer, offset)
+				RPCs.push([connection, d[0]])
+				offset = d[1]
+			}
+			if (offset != buffer.length) throw new Error("trailing data")
+			return RPCs
+		},
+		rpc_payload_length: function(x) {
+			return x.reduce(function(p, c) {
+				return p + 4 + RPC.calculateLength(c[1])
+			}, 0)
+		},
+		serialize_rpc_payload: function(x, buffer, offset) {
+			x.forEach(function(rpc){
+				check_buffer(4)
+				buffer.writeUInt32BE(rpc[0], offset)
+				offset += 4
+				offset = RPC.serialize(rpc[1], buffer, offset)
+			})
+			return offset
+			function check_buffer(l) {
+				if (buffer.length-offset < l) throw new Error("insufficient buffer space")
+			}
 		}
 	}
 })()

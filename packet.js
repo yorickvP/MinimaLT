@@ -1,5 +1,6 @@
 var assert = require('assert')
 var Int64 = require('./Int64')
+var RPC = require('./RPC')
 
 var packet = (function() {
 	"use strict";
@@ -36,6 +37,7 @@ var packet = (function() {
 			return ret
 		},
 		makePacket: function(res) {
+			// pre-allocate the buffer instead?
 			var TID = new Buffer(res.TID.getBuffer())
 			var list = [TID, res.nonce.getBuffer()]
 			var length = 16
@@ -55,16 +57,24 @@ var packet = (function() {
 			length += res.payload.length
 			return Buffer.concat(list, length)
 		},
-		parsePayload: function(payload, rpc_func) {
+		parsePayload: function(payload) {
 			if (payload.length < 12) throw new Error("invalid packet length")
 			var sequence = payload.readUInt32BE(0)
 			var acknowledge = payload.readUInt32BE(4)
-			var RPCs = rpc_func(payload.slice(8))
+			var RPCs = RPC.deserialize_rpc_payload(payload.slice(8))
 			return {
 				sequence: sequence,
 				acknowledge: acknowledge,
 				RPC: RPCs
 			}
+		},
+		makePayload: function(payload) {
+			// pre-allocate this instead?
+			var res = new Buffer(8 + RPC.rpc_payload_length(payload.RPC))
+			res.writeUInt32BE(payload.sequence, 0)
+			res.writeUInt32BE(payload.acknowledge, 4)
+			RPC.serialize_rpc_payload(payload.RPC, res, 8)
+			return res
 		}
 	}
 })()

@@ -11,6 +11,12 @@ var serialized_data = new Buffer(
 "bGxkAAAAAWQAAAACZAAAAANlbHMABHRoaXNzAAJpc3MAAWFzAARsaXN0ZWQA" +
 "AAABcwANSGVsbG8sIFdvcmxkIWIADEhlbGxvIFdvcmxkIXEP8SNFAGVDIWU=", 'base64')
 
+var testPubKey = new Buffer("ac308e7b6e369b67ffa631feea383d50ca9e2fcf280547091ebc4ee26b8e9204", 'hex')
+var testRPC = Buffer.concat([new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65]),
+	new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65])])
+var testTID = new Int64(new Buffer(" new_TID"))
+var testRPCdata = [[0, ["nextTid", testTID, testPubKey]], [0, ["nextTid", testTID, testPubKey]]]
+
 describe('RPC', function(){
 	it('should serialize/deserialize correctly', function(){
 		var data2 = RPC.deserialize(serialized_data, 0)[0]
@@ -107,4 +113,56 @@ describe('RPC', function(){
 			})
 		})
 	})
+	describe('.deserialize_rpc_payload', function() {
+		it('should work', function(){
+			assert.deepEqual(RPC.deserialize_rpc_payload(testRPC), testRPCdata)
+		})
+		it('should fail on a wrong parameter', function(){
+			assert.throws(function(){
+				RPC.deserialize_rpc_payload(new Buffer(10))
+			})
+		})
+		it('should fail on too much data', function(){
+			assert.throws(function(){
+				RPC.deserialize_rpc_payload(Buffer.concat([testRPC, new Buffer("hello there")]))
+			})
+		})
+	})
+	describe('.rpc_payload_length', function(){
+		it('should work', function(){
+			assert.equal(RPC.rpc_payload_length(testRPCdata), testRPC.length)
+		})
+		it('should fail on a wrong input', function(){
+			assert.throws(function(){
+				RPC.rpc_payload_length([[0, -1]])
+			})
+		})
+	})
+	describe('.serialize_rpc_payload', function(){
+		it('should work', function(){
+			var b = new Buffer(RPC.rpc_payload_length(testRPCdata))
+			var offs = RPC.serialize_rpc_payload(testRPCdata, b, 0)
+			assert.equal(offs, b.length)
+			assert.deepEqual(b, testRPC)
+		})
+		it('should fail on a wrong input', function(){
+			var b = new Buffer(100)
+			assert.throws(function(){
+				RPC.serialize_rpc_payload([[0, -1]], b, 0)
+			})
+		})
+		it('should fail when not given a big enough buffer', function(){
+			var b = new Buffer(100)
+			assert.throws(function(){
+				RPC.serialize_rpc_payload(testRPCdata, b, 0)
+			})
+		})
+	})
 })
+
+
+var testRPC = Buffer.concat([new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65]),
+	new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65])])
+var testPubKey = new Buffer("ac308e7b6e369b67ffa631feea383d50ca9e2fcf280547091ebc4ee26b8e9204", 'hex')
+var testTID = new Int64(new Buffer(" new_TID"))
+var testRPCdata = [[0, ["nextTid", testTID, testPubKey]], [0, ["nextTid", testTID, testPubKey]]]

@@ -3,16 +3,17 @@
 var assert = require("assert")
 var packet = require('../packet.js')
 var crypto = require('../crypto.js')
+var Int64  = require('../Int64.js')
 
 var testPkt = new Buffer(" the_TIDnonnonce")
 var testPub = new Buffer("169d20312f66ac799959b7470a23fd4dd186c5308ff9b41a91a8637aac94d752", 'hex')
 /* not implemented anytime soon */
 var testPuz = new Buffer(148)
 testPuz[0] = 255
-var testPayload = new Buffer(
-"2a2b2c2d1a1b1c1d000000006e657874546964206e65775f544944" +
-"ac308e7b6e369b67ffa631feea383d50ca9e2fcf280547091ebc4ee26b8e9204", "hex")
-
+var testPubKey = new Buffer("ac308e7b6e369b67ffa631feea383d50ca9e2fcf280547091ebc4ee26b8e9204", 'hex')
+var testTID = new Int64(new Buffer(" new_TID"))
+var testRPC = Buffer.concat([new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65])])
+var testPayload = Buffer.concat([new Buffer("2a2b2c2d1a1b1c1d", "hex"), testRPC])
 
 describe('packet', function(){
 	describe('.parsePacket()', function(){
@@ -69,16 +70,24 @@ describe('packet', function(){
 	describe('.parsePayload()', function(){
 		it('should error on insufficient data', function(){
 			assert.throws(function(){
-				packet.parsePayload(new Buffer(5), function(){})
+				packet.parsePayload(new Buffer(5))
 			}, function(err) {
 				return err instanceof Error && err.message == "invalid packet length"
 			})
 		})
 		it('should work', function(){
-			var res = packet.parsePayload(testPayload, function(r){return [r]})
+			var res = packet.parsePayload(testPayload)
 			assert.equal(res.sequence, 0x2a2b2c2d)
 			assert.equal(res.acknowledge, 0x1a1b1c1d)
-			/* test RPCs here */
+			assert.deepEqual(res.RPC, [[0, ["nextTid", testTID, testPubKey]]])
+			res = packet.parsePayload(Buffer.concat([testPayload, testRPC]))
+			assert.deepEqual(res.RPC, [[0, ["nextTid", testTID, testPubKey]], [0, ["nextTid", testTID, testPubKey]]])
+		})
+		it('should error on too much data', function(){
+			assert.throws(function(){
+				packet.parsePayload(Buffer.concat([testPayload, new Buffer("hello there")]))
+			})
 		})
 	})
 })
+
