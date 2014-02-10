@@ -79,9 +79,10 @@ describe('packet', function(){
 			var res = packet.parsePayload(testPayload)
 			assert.equal(res.sequence, 0x2a2b2c2d)
 			assert.equal(res.acknowledge, 0x1a1b1c1d)
-			assert.deepEqual(res.RPC, [[0, ["nextTid", testTID, testPubKey]]])
+			assert.deepEqual(res.RPC, [{cid:0, rpc:["nextTid", testTID, testPubKey]}])
 			res = packet.parsePayload(Buffer.concat([testPayload, testRPC]))
-			assert.deepEqual(res.RPC, [[0, ["nextTid", testTID, testPubKey]], [0, ["nextTid", testTID, testPubKey]]])
+			assert.deepEqual(res.RPC, [{cid:0, rpc:["nextTid", testTID, testPubKey]},
+										{cid:0, rpc:["nextTid", testTID, testPubKey]}])
 		})
 		it('should error on too much data', function(){
 			assert.throws(function(){

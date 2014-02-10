@@ -15,11 +15,11 @@ var testPubKey = new Buffer("ac308e7b6e369b67ffa631feea383d50ca9e2fcf280547091eb
 var testRPC = Buffer.concat([new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65]),
 	new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65])])
 var testTID = new Int64(new Buffer(" new_TID"))
-var testRPCdata = [[0, ["nextTid", testTID, testPubKey]], [0, ["nextTid", testTID, testPubKey]]]
+var testRPCdata = [{cid:0, rpc:["nextTid", testTID, testPubKey]}, {cid:0, rpc:["nextTid", testTID, testPubKey]}]
 
 describe('RPC', function(){
 	it('should serialize/deserialize correctly', function(){
-		var data2 = RPC.deserialize(serialized_data, 0)[0]
+		var data2 = RPC.deserialize(serialized_data, 0).data
 		var serialized_data2 = RPC.serialize_complete(data)
 		assert.deepEqual(data2, data)
 		assert.deepEqual(serialized_data2, serialized_data)
@@ -160,9 +160,3 @@ describe('RPC', function(){
 	})
 })
 
-
-var testRPC = Buffer.concat([new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65]),
-	new Buffer("000000006c7300076e65787454696471206e65775f544944620020", 'hex'), testPubKey, new Buffer([0x65])])
-var testPubKey = new Buffer("ac308e7b6e369b67ffa631feea383d50ca9e2fcf280547091ebc4ee26b8e9204", 'hex')
-var testTID = new Int64(new Buffer(" new_TID"))
-var testRPCdata = [[0, ["nextTid", testTID, testPubKey]], [0, ["nextTid", testTID, testPubKey]]]

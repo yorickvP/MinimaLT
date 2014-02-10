@@ -98,8 +98,8 @@ var RPC = (function() {
 					check_data(1)
 					while(buffer[offset] != 'e'.charCodeAt(0)) {
 						var d = deserialize(buffer, offset)
-						x.push(d[0])
-						offset = d[1]
+						x.push(d.data)
+						offset = d.offset
 						check_data(1)
 					}
 					offset++
@@ -123,7 +123,7 @@ var RPC = (function() {
 					break
 				default: throw new Error("malformed data")
 			}
-			return [x, offset]
+			return {data: x, offset: offset}
 
 			function check_data(l) {
 				if (buffer.length-offset < l) throw new Error("insufficient data")
@@ -140,23 +140,23 @@ var RPC = (function() {
 				connection = buffer.readUInt32BE(offset)
 				offset += 4
 				d = RPC.deserialize(buffer, offset)
-				RPCs.push([connection, d[0]])
-				offset = d[1]
+				RPCs.push({cid: connection, rpc: d.data})
+				offset = d.offset
 			}
 			if (offset != buffer.length) throw new Error("trailing data")
 			return RPCs
 		},
 		rpc_payload_length: function(x) {
 			return x.reduce(function(p, c) {
-				return p + 4 + RPC.calculateLength(c[1])
+				return p + 4 + RPC.calculateLength(c.rpc)
 			}, 0)
 		},
 		serialize_rpc_payload: function(x, buffer, offset) {
 			x.forEach(function(rpc){
 				check_buffer(4)
-				buffer.writeUInt32BE(rpc[0], offset)
+				buffer.writeUInt32BE(rpc.cid, offset)
 				offset += 4
-				offset = RPC.serialize(rpc[1], buffer, offset)
+				offset = RPC.serialize(rpc.rpc, buffer, offset)
 			})
 			return offset
 			function check_buffer(l) {
