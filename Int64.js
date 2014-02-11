@@ -17,6 +17,9 @@ Int64.prototype.shiftLeft = function(x) {
 Int64.prototype.getBuffer = function() {
 	return this.buffer.slice(this.offset, this.offset + 8)
 }
+Int64.prototype.equal = function(that) {
+	return that instanceof Int64 && this.toOctetString() == that.toOctetString()
+}
 
 Int64.MAX_INT = orig_int64.MAX_INT
 Int64.MIN_INT = orig_int64.MIN_INT

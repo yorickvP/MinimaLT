@@ -41,4 +41,15 @@ describe('Int64', function(){
 			assert.deepEqual(x.getBuffer(), new Buffer('0ff1234500654321', 'hex'))
 		})
 	})
+	describe('.equal', function(){
+		it('should be equal on two of the same things', function(){
+			assert.ok(new Int64(0xff12345, 0x654321).equal(new Int64(new Buffer('0ff1234500654321', 'hex'))))
+		})
+		it('should not error when comparing to a non-int64', function(){
+			assert.ok(!(new Int64(12345).equal(1234)))
+		})
+		it('should return false on two ints that are not equal', function(){
+			assert.ok(!(new Int64(12345).equal(new Int64(12346))))
+		})
+	})
 })
