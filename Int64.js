@@ -1,3 +1,4 @@
+"use strict";
 var orig_int64 = require('node-int64')
 function Int64(a1, a2) {
 	orig_int64.apply(this, arguments)
