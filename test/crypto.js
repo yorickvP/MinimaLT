@@ -12,8 +12,13 @@ var bobK = {
 	public: new Buffer("sZ+uMFsK4ZNChDZRGZshFYhK7IP/g82URlRlddnR03I=", 'base64'),
 	private: new Buffer("Umd2iCLuYk1I/OFexcp5y9YCy39MIVelFlVpkfIu+Mc=", 'base64')
 }
+var signK = {
+	public: new Buffer("Tvpur+Tq0mPQFmlJkl6JRswFAjmmf3vkcpZl8/4irxk=", 'base64'),
+	private: new Buffer("9JEA8kRsuG+OdHhKo1ywvuDt5tqtyCZxsIx5BhI6DV5O+m6v5OrSY9AWaUmSXolGzAUCOaZ/e+RylmXz/iKvGQ==", 'base64')
+}
 var secret = new Buffer("KeputHe5jy7UJST6HxSPCHYht5KyV5n9Ju73SrwmBJM=", 'base64')
 var encrypted_hello = new Buffer("0gg0FLPlbFA7x7IvYZezFR+OjXDm", "base64")
+var signed_hello = new Buffer("6g6nLajpD/AFHdMhl+Xvjc6fGDPtBj5EMn7UUJfMkjvGWDCJHd8JFs6nB2UuCPsg2nAo6+oFUD7N2qqx2mqEC2hlbGxv", 'base64')
 var nonce = new Buffer(24)
 nonce.fill(42)
 describe('crypto', function(){
@@ -191,6 +196,94 @@ describe('crypto', function(){
 		it('should be in range', function(){
 			assert.ok(crypto.random_UInt32() > 0)
 			assert.ok(crypto.random_UInt32() < (1<<30)*4)
+		})
+	})
+//	sign: function(msgBin, privKey) {
+//	verify: function(msgBin, pubKey) {
+	describe('.make_signing_keypair', function() {
+		it('should be buffers', function(){
+			var keypair = crypto.make_signing_keypair()
+			assert(Buffer.isBuffer(keypair.public))
+			assert(Buffer.isBuffer(keypair.private))
+		})
+		it('should be the correct length', function(){
+			var keypair = crypto.make_signing_keypair()
+			assert.equal(keypair.public.length, 32)
+			assert.equal(keypair.private.length, 64)
+		})
+	})
+	describe('.sign', function() {
+		it('should be a buffer', function(){
+			assert(Buffer.isBuffer(crypto.sign(new Buffer("hello"), signK.private)))
+		})
+		it('should compute the correct message', function(){
+			assert.deepEqual(crypto.sign(new Buffer("hello"), signK.private), signed_hello)
+		})
+		it('should error on wrong argument #1', function(){
+			var m = new Buffer('hello'), s = signK.private
+			m = "hello"
+			assert.throws(function(){
+				crypto.sign(m, s)
+			})
+			m = 10
+			assert.throws(function(){
+				crypto.sign(m, s)
+			})
+			// XXX: allow empty string to work?
+		})
+		it('should error on wrong argument #2', function(){
+			var m = new Buffer('hello'), s = signK.private
+			s = "secret"
+			assert.throws(function(){
+				crypto.sign(m, s)
+			})
+			s = 10
+			assert.throws(function(){
+				crypto.sign(m, s)
+			})
+			s = new Buffer(1)
+			assert.throws(function(){
+				crypto.sign(m, s)
+			})
+		})
+	})
+	describe('.verify', function() {
+		it('should be a buffer', function(){
+			assert(Buffer.isBuffer(crypto.verify(signed_hello, signK.public)))
+		})
+		it('should compute the correct message', function(){
+			assert.deepEqual(crypto.verify(signed_hello, signK.public), new Buffer('hello'))
+		})
+		it('should error on wrong argument #1', function(){
+			var m = signed_hello, s = signK.public
+			m = "hello"
+			assert.throws(function(){
+				crypto.verify(m, s)
+			})
+			m = 10
+			assert.throws(function(){
+				crypto.verify(m, s)
+			})
+			// XXX: allow empty string to work?
+		})
+		it('should error on wrong argument #2', function(){
+			var m = signed_hello, s = signK.public
+			s = "public"
+			assert.throws(function(){
+				crypto.verify(m, s)
+			})
+			s = 10
+			assert.throws(function(){
+				crypto.verify(m, s)
+			})
+			s = new Buffer(1)
+			assert.throws(function(){
+				crypto.verify(m, s)
+			})
+		})
+		it('should error on the wrong key', function() {
+			var false_hello = crypto.sign(new Buffer('hello'), crypto.make_signing_keypair().private)
+			assert.equal(crypto.verify(false_hello, signK.public), null)
 		})
 	})
 })

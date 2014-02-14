@@ -39,6 +39,20 @@ var crypto = {
 	},
 	random_UInt32: function() {
 		return nacl.random_bytes(4).readUInt32BE(0)
+	},
+	make_signing_keypair: function() {
+		var pair = nacl.crypto_sign_keypair()
+		return {public: pair.signPk, private: pair.signSk}
+	},
+	sign: function(msgBin, privKey) {
+		if (!Buffer.isBuffer(msgBin))
+			throw new Error("message should be a buffer")
+		return nacl.crypto_sign(msgBin, privKey)
+	},
+	verify: function(msgBin, pubKey) {
+		if (!Buffer.isBuffer(msgBin))
+			throw new Error("message should be a buffer")
+		return nacl.crypto_sign_open(msgBin, pubKey)
 	}
 }
 
