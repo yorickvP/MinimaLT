@@ -84,6 +84,15 @@ Cert.prototype.matches = function(other) {
 		return false
 	}
 }
+Cert.prototype.generateECert = function(signing, ip, port, version, padding, lifetime) {
+	var eBoxing = crypto.make_keypair()
+	var life_end = Date.now() + lifetime
+	var cert = ECert.makeSign(signing.private, ip, port, version, padding, this.signing, eBoxing.public, life_end)
+	return {
+		eBoxing: eBoxing,
+		eCert: cert
+	}
+}
 
 
 // identifier:
@@ -172,7 +181,7 @@ ECert.encode = function(ip, port, version, padding, signing, eBoxing, lifetime) 
 	assert(Buffer.isBuffer(signing) && signing.length < 256)
 	assert(Buffer.isBuffer(eBoxing) && eBoxing.length < 256)
 
-	var buf = new Buffer(signing.length + eBoxing.length + 16)
+	var buf = new Buffer(signing.length + eBoxing.length + 20)
 	var offset = 0
 	// write IP
 	buf.writeUInt32BE(convertIPtoUInt32(ip), offset)
@@ -198,7 +207,7 @@ ECert.encode = function(ip, port, version, padding, signing, eBoxing, lifetime) 
 
 
 	// write lifetime
-	void (new Int64(lifetime)).getBuffer().copy(offset)
+	void (new Int64(lifetime)).getBuffer().copy(buf, offset)
 	offset += 8
 	assert.equal(offset, buf.length)
 	return buf
