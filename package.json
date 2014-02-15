@@ -1,0 +1,12 @@
+{
+  "name": "minimaLT",
+  "version": "0.0.0",
+  "description": "A minimal and untested implementation of the MinimaLT protocol",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "dependencies": ["js-nacl", "node-int64"],
+  "author": "Yorick van Pelt <yorickvanpelt@gmail.com>",
+  "license": "ISC"
+}
