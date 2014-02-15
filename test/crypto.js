@@ -123,6 +123,10 @@ describe('crypto', function(){
 			assert(Buffer.isBuffer(crypto.unbox(encrypted_hello, nonce, secret)))
 		})
 		it('should decrypt a message', function(){
+			var nonce = new Buffer(24)
+			nonce.fill(42)
+			var secret = new Buffer("KeputHe5jy7UJST6HxSPCHYht5KyV5n9Ju73SrwmBJM=", 'base64')
+			var encrypted_hello = new Buffer("0gg0FLPlbFA7x7IvYZezFR+OjXDm", "base64")
 			assert.deepEqual(crypto.unbox(encrypted_hello, nonce, secret), new Buffer("hello"))
 		})
 		it('should error on wrong argument #1', function(){
@@ -165,6 +169,71 @@ describe('crypto', function(){
 			s = new Buffer(10)
 			assert.throws(function(){
 				crypto.unbox(m, n, s)
+			})
+		})
+	})
+	describe('.unboxWithKeys', function() {
+		it('should be a buffer', function(){
+			assert(Buffer.isBuffer(crypto.unboxWithKeys(encrypted_hello, nonce, aliceK.public, bobK.private)))
+		})
+		it('should decrypt a message', function(){
+			assert.deepEqual(crypto.unboxWithKeys(encrypted_hello, nonce, aliceK.public, bobK.private), new Buffer("hello"))
+		})
+		it('should error on wrong argument #1', function(){
+			var m = encrypted_hello, n = nonce, p = aliceK.public, s = bobK.private
+			m = "encrypted_hello"
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			m = 10
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			// XXX: allow empty string to work?
+		})
+		it('should error on wrong argument #2', function(){
+			var m = encrypted_hello, n = nonce, p = aliceK.public, s = bobK.private
+			n = "nonce"
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			n = 10
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			n = new Buffer(1)
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+		})
+		it('should error on wrong argument #3', function(){
+			var m = encrypted_hello, n = nonce, p = aliceK.public, s = bobK.private
+			p = "aliceK.public"
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			p = 10
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			p = new Buffer(10)
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+		})
+		it('should error on wrong argument #4', function(){
+			var m = encrypted_hello, n = nonce, p = aliceK.public, s = bobK.private
+			s = "bobK.private"
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			s = 10
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
+			})
+			s = new Buffer(10)
+			assert.throws(function(){
+				crypto.unboxWithKeys(m, n, p, s)
 			})
 		})
 	})

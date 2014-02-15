@@ -18,7 +18,17 @@ var crypto = {
 		return nacl.crypto_box_precomputed(msgBin, nonceBin, {boxK: secret})
 	},
 	unbox: function(msgBin, nonceBin, secret) {
+		// ommitting this check actually makes it throw
+		// in a way that trashes its memory management
+		// so all later results would be wrong
+		if (!Buffer.isBuffer(msgBin))
+			throw new Error("message should be a buffer")
 		return nacl.crypto_box_open_precomputed(msgBin, nonceBin, {boxK: secret})
+	},
+	unboxWithKeys: function(msgBin, nonceBin, theirpub, mypriv) {
+		if (!Buffer.isBuffer(msgBin))
+			throw new Error("message should be a buffer")
+		return nacl.crypto_box_open(msgBin, nonceBin, theirpub, mypriv)
 	},
 	make_nonce: function(TID, nonce) {
 		var res = new Buffer(24)
