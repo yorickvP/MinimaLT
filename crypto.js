@@ -9,8 +9,8 @@ var crypto = {
 		var pair = nacl.crypto_box_keypair()
 		return {public: pair.boxPk, private: pair.boxSk}
 	},
-	shared_secret: function(theirpub, mysecret) {
-		return nacl.crypto_box_precompute(theirpub, mysecret).boxK
+	shared_secret: function(theirpub, mypriv) {
+		return nacl.crypto_box_precompute(theirpub, mypriv).boxK
 	},
 	box: function(msgBin, nonceBin, secret) {
 		if (!Buffer.isBuffer(msgBin))
