@@ -1,8 +1,8 @@
 after you get js-nacl to work, replace the extractbytes function in lib/nacl_factory.js with
-    function extractBytes(address, length) {
-  var result = new Buffer(nacl_raw.HEAPU8.subarray(address, address + length));
 
-	return result;
+    function extractBytes(address, length) {
+        var result = new Buffer(nacl_raw.HEAPU8.subarray(address, address + length));
+	    return result;
     }
 
 
