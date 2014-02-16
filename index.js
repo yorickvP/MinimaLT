@@ -8,21 +8,22 @@ module.exports.listen = function(ext_ip, port, key, cb) {
 	server.on('create', cb)
 	return server
 }
-module.exports.client = function(domain_service, ip, port) {
+module.exports.client = function(ip, port, domain_service) {
 	var client = new Socket()
 	if (arguments.length >= 3) {
-		client.setDomainService(domain_service, ip, port)
+		client.setDomainService(ip, port, domain_service)
 	}
 	return client
 }
-module.exports.domainservice = function(key, port, cb) {
+module.exports.domainservice = function(ext_ip, port, key, cb) {
 	var server = new Socket(port)
-	server.listen(key.cert, key.signing, key.boxing, true)
-	server.on('requestCert', function(cert, cert_cb) {
-		if (cert == key.public) {
-			cb(null, server.getECert(key))
+	server.listen(ext_ip, key.cert, key.signing, key.boxing, true)
+	server.on('requestCert', function(bident, cert_cb) {
+		var ident = certificate.Identity.fromBuffer(bident)
+		if (ident.matches(server.ephemeral_certificate)) {
+			cert_cb(null, server.certificate.toBuffer(), server.ephemeral_certificate.toBuffer())
 		} else {
-			cb(cert, cert_cb)
+			cb(ident, cert_cb)
 		}
 	})
 	return server

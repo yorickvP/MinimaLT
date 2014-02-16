@@ -117,7 +117,7 @@ Tunnel.prototype.send_connect = function() {
 }
 Tunnel.prototype.create = function(servicename, authkey, rpcs) {
 	var con = new Connection(this.connections.length, this)
-	con.setRPCs(rpcs)
+	if (rpcs) con.setRPCs(rpcs)
 	this.connections[0].call('create', con.cid, servicename)
 	this.connections[con.cid] = con
 	return con
@@ -182,13 +182,13 @@ function controlConnection(id, tunnel) {
 		},
 		requestCert: function(S) {
 			assert(Buffer.isBuffer(S))
-			tunnel.emit('requestCert', S, function(err, eCert) {
+			tunnel.emit('requestCert', S, function(err, cert, eCert) {
 				if (err) {
 					// TODO: handle error
 					void 0
 				} else {
 					// TODO: S -> cert
-					connection.call('giveCert', S, eCert)
+					connection.call('giveCert', cert, eCert)
 				}
 			})
 		},

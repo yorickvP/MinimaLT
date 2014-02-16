@@ -14,10 +14,28 @@ var server = minimaLT.listen('127.0.0.1', 21398, server_cert, function(con, serv
 	}
 })
 
-var client = minimaLT.client()
-var connection = client.connectECert(server.ephemeral_certificate, "my_thing", null, {
-	pong: function(x) {
-		console.log("OMG PONG:", x)
+//var connection = client.connectECert(server.ephemeral_certificate, "my_thing", null, {
+//	pong: function(x) {
+//		console.log("OMG PONG:", x)
+//	}
+//})
+//connection.call('ping', 42)
+
+var domain_cert = minimaLT.generate_servercert('domain.localhost')
+var domainservice = minimaLT.domainservice('127.0.0.1', 21396, domain_cert, function(ident, cb) {
+	console.log("got domain service request", ident)
+	if (ident.matches(server_cert.cert)) {
+		cb(null, server_cert.cert.toBuffer(), server.ephemeral_certificate.toBuffer())
 	}
 })
-connection.call('ping', 42)
+
+var client = minimaLT.client('127.0.0.1', 21396, domain_cert.cert)
+
+client.connect(server_cert.cert.toIdentity(), "my_thing", null, function(connection) {
+	connection.call('ping', 42)
+	return {
+		pong: function(x) {
+			console.log("OMG PONG:", x)
+		}
+	}
+})
