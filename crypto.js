@@ -25,6 +25,11 @@ var crypto = {
 			throw new Error("message should be a buffer")
 		return nacl.crypto_box_open_precomputed(msgBin, nonceBin, {boxK: secret})
 	},
+	boxWithKeys: function(msgBin, nonceBin, theirpub, mypriv) {
+		if (!Buffer.isBuffer(msgBin))
+			throw new Error("message should be a buffer")
+		return nacl.crypto_box(msgBin, nonceBin, theirpub, mypriv)
+	},
 	unboxWithKeys: function(msgBin, nonceBin, theirpub, mypriv) {
 		if (!Buffer.isBuffer(msgBin))
 			throw new Error("message should be a buffer")
@@ -49,6 +54,9 @@ var crypto = {
 	},
 	random_UInt32: function() {
 		return nacl.random_bytes(4).readUInt32BE(0)
+	},
+	random_nonce: function() {
+		return nacl.crypto_box_random_nonce()
 	},
 	make_signing_keypair: function() {
 		var pair = nacl.crypto_sign_keypair()

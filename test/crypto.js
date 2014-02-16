@@ -172,6 +172,71 @@ describe('crypto', function(){
 			})
 		})
 	})
+	describe('.boxWithKeys', function(){
+		it('should be a buffer', function(){
+			assert(Buffer.isBuffer(crypto.boxWithKeys(new Buffer("hello"), nonce, aliceK.public, bobK.private)))
+		})
+		it('should compute the correct message', function(){
+			assert.deepEqual(crypto.boxWithKeys(new Buffer("hello"), nonce, aliceK.public, bobK.private), encrypted_hello)
+		})
+		it('should error on wrong argument #1', function(){
+			var m = new Buffer('hello'), n = nonce, p = aliceK.public, s = bobK.private
+			m = "hello"
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			m = 10
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			// XXX: allow empty string to work?
+		})
+		it('should error on wrong argument #2', function(){
+			var m = new Buffer('hello'), n = nonce, p = aliceK.public, s = bobK.private
+			n = "nonce"
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			n = 10
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			n = new Buffer(1)
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+		})
+		it('should error on wrong argument #3', function(){
+			var m = new Buffer('hello'), n = nonce, p = aliceK.public, s = bobK.private
+			p = "aliceK.public"
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			p = 10
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			p = new Buffer(10)
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+		})
+		it('should error on wrong argument #4', function(){
+			var m = new Buffer('hello'), n = nonce, p = aliceK.public, s = bobK.private
+			s = "bobK.private"
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			s = 10
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+			s = new Buffer(10)
+			assert.throws(function(){
+				crypto.boxWithKeys(m, n, p, s)
+			})
+		})
+	})
 	describe('.unboxWithKeys', function() {
 		it('should be a buffer', function(){
 			assert(Buffer.isBuffer(crypto.unboxWithKeys(encrypted_hello, nonce, aliceK.public, bobK.private)))
@@ -256,6 +321,19 @@ describe('crypto', function(){
 	describe('.random_Int64', function(){
 		it('should not be zero', function(){
 			assert.notEqual(crypto.random_Int64.valueOf(), 0)
+		})
+	})
+	describe('.random_nonce', function(){
+		it('should be a buffer', function() {
+			assert(Buffer.isBuffer(crypto.random_nonce()))
+		})
+		it('should not be zero', function(){
+			var b = new Buffer(24)
+			b.fill(0)
+			assert.notDeepEqual(crypto.random_nonce(), b)
+		})
+		it('should be 24 bytes long', function() {
+			assert.equal(crypto.random_nonce().length, 24)
 		})
 	})
 	describe('.random_UInt32', function(){
