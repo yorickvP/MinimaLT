@@ -3,6 +3,7 @@ var crypto = require('./crypto.js')
 var packet = require('./packet.js')
 var Int64 = require('./Int64.js')
 var Connection = require('./Connection.js')
+var auth = require('./auth.js')
 var assert = require('assert')
 var util = require('util')
 var events = require('events')
@@ -114,10 +115,17 @@ Tunnel.prototype.flush_rpcs = function() {
 Tunnel.prototype.send_connect = function() {
 	this.do_rpc(0, ["nextTid", this.TID, this.own_pubkey], this.own_pubkey)
 }
-Tunnel.prototype.create = function(servicename, authkey, rpcs) {
+Tunnel.prototype.create = function(servicename, rpcs) {
 	var con = new Connection(this.connections.length, this)
 	if (rpcs) con.setRPCs(rpcs)
 	this.connections[0].call('create', con.cid, servicename)
+	this.connections[con.cid] = con
+	return con
+}
+Tunnel.prototype.createAuth = function(servicename, authkey, auth_msg, rpcs) {
+	var con = new Connection(this.connections.length, this)
+	if (rpcs) con.setRPCs(rpcs)
+	this.connections[0].call('createAuth', con.cid, servicename, authkey, auth_msg)
 	this.connections[con.cid] = con
 	return con
 }
@@ -167,6 +175,17 @@ function controlConnection(id, tunnel) {
 			var con = new Connection(c, tunnel)
 			tunnel.connections[c] = con
 			tunnel.emit('create', con, y, null, function(err, rpcs) {
+				con.init_cb(err, rpcs)
+			})
+		},
+		createAuth: function(c, y, U, x) {
+			assert(typeof c == 'number')
+			assert(typeof y == 'string')
+			assert(Buffer.isBuffer(U))
+			assert(Buffer.isBuffer(x))
+			var con = new Connection(c, tunnel)
+			tunnel.connections[c] = con
+			tunnel.emit('createAuth', con, y, U, x, function(err, rpcs) {
 				con.init_cb(err, rpcs)
 			})
 		},

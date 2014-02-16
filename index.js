@@ -44,3 +44,4 @@ module.exports.generate_servercert = function(hostname) {
 		boxing: boxing
 	}
 }
+module.exports.generate_clientkey = crypto.make_keypair

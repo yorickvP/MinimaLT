@@ -1,10 +1,10 @@
 
 
 var minimaLT = require('./index.js')
+var client_key = minimaLT.generate_clientkey()
 var server_cert = minimaLT.generate_servercert('a.localhost')
 var server = minimaLT.listen('127.0.0.1', 21398, server_cert, function(con, servicename, auth, cb){
-
-	if (servicename == 'my_thing') {
+	if (servicename == 'my_thing' && memcmp(client_key.public, auth)) {
 		cb(null, {
 			ping: function(x) {
 				console.log('OMG PING:', x)
@@ -50,7 +50,7 @@ server.advertise(name_cert.cert.toIdentity(), function() {
 
 	var client = minimaLT.client('127.0.0.1', 21396, domain_cert.cert)
 
-	client.connect(server_cert.cert.toIdentity(), "my_thing", null, function(connection) {
+	client.connect(server_cert.cert.toIdentity(), "my_thing", client_key, function(connection) {
 		connection.call('ping', 42)
 		return {
 			pong: function(x) {
@@ -59,3 +59,11 @@ server.advertise(name_cert.cert.toIdentity(), function() {
 		}
 	})
 })
+
+function memcmp(a, b) {
+	if (a.length != b.length) return false
+	for (var i = 0; i < a.length; i++) {
+		if (a[i] != b[i]) return false
+	}
+	return true
+}

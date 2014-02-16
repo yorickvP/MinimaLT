@@ -7,6 +7,7 @@ var util = require('util')
 var events = require('events')
 var assert = require('assert')
 var certificate = require('./certificate')
+var auth = require('./auth')
 
 function DEBUG(str) {
 	console.log.apply(console, ["Socket:"].concat([].slice.call(arguments)))
@@ -49,6 +50,11 @@ Socket.prototype.addTunnel = function(tun, ip, port) {
 	var self = this
 	tun.on('create', function() {
 		self.emit.apply(self, ['create'].concat([].slice.call(arguments)))
+	})
+	tun.on('createAuth', function(con, y, U, x, cb) {
+		if (auth.verifyUserAuth(x, self.long_boxing, U)) {
+			self.emit('create', con, y, U, cb)
+		}
 	})
 	tun.on('requestCert', function() {
 		self.emit.apply(self, ['requestCert'].concat([].slice.call(arguments)))
@@ -98,14 +104,19 @@ Socket.prototype.lookupIdent = function(ident, cb) {
 }
 Socket.prototype.connect = function(ident, servicename, own_auth_key, cb) {
 	var self = this
-	this.lookupIdent(ident, function(certD, ecertD) {
-		var con = self.connectECert(ecertD, servicename, own_auth_key)
+	this.lookupIdent(ident, function(cert, ecert) {
+		var con = self.connectECert(cert, ecert, servicename, own_auth_key)
 		con.setRPCs(cb(con))
 	})
 }
-Socket.prototype.connectECert = function(eCert, servicename, own_auth_key, rpcs) {
+Socket.prototype.connectECert = function(cert, eCert, servicename, own_auth_key, rpcs) {
 	var tun = this.makeTunECert(eCert)
-	return tun.create(servicename, own_auth_key, rpcs)
+	if (own_auth_key != null) {
+		var auth_msg = auth.makeUserAuth(own_auth_key, cert.boxing)
+		return tun.createAuth(servicename, own_auth_key.public, auth_msg, rpcs)
+	} else {
+		return tun.create(servicename, rpcs)
+	}
 }
 Socket.prototype.listen = function(ext_ip, cert, signing, boxing, accept) {
 	DEBUG('accepting connections')
@@ -117,6 +128,7 @@ Socket.prototype.listen = function(ext_ip, cert, signing, boxing, accept) {
 		this.decoding_keys.push(boxing)
 	}
 	this.long_signing = signing
+	this.long_boxing  = boxing
 	this.certificate = cert
 	this.rotateECert()
 }
