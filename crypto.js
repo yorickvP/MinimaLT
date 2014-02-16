@@ -71,6 +71,10 @@ var crypto = {
 		if (!Buffer.isBuffer(msgBin))
 			throw new Error("message should be a buffer")
 		return nacl.crypto_sign_open(msgBin, pubKey)
+	},
+	hashSecret: function(secret) {
+		// XXX: should this be scrypt/PBKDF2 instead?
+		return nacl.crypto_hash_sha256(secret)
 	}
 }
 

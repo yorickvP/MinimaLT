@@ -433,4 +433,12 @@ describe('crypto', function(){
 			assert.equal(crypto.verify(false_hello, signK.public), null)
 		})
 	})
+	describe('.hashSecret', function() {
+		it('should be a buffer', function() {
+			assert(Buffer.isBuffer(crypto.hashSecret(secret)))
+		})
+		it('should compute to the correct secret', function() {
+			assert.deepEqual(crypto.hashSecret(secret), new Buffer('nHjM9N/3Dp2fTu3aP41ec5OcZzphLmF3tARdal/0jzc=', 'base64'))
+		})
+	})
 })
