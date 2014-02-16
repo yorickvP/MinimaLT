@@ -45,6 +45,15 @@ Cert.encode = function(signing, boxing, hostname) {
 Cert.fromBuffer = function(signing_key, signed_message) {
 	var message = crypto.verify(signed_message, signing_key)
 	if (message === null) throw new Error("invalid signature")
+	return Cert.decode(signed_message, message)
+}
+Cert.fromBufferNoKey = function(signed_message) {
+	var cert = Cert.decode(signed_message, signed_message.slice(64))
+	if (crypto.verify(cert.signed_message, cert.signing) === null)
+		throw new Error('invalid signature')
+	return cert
+}
+Cert.decode = function(signed_message, message) {
 	var offset = 0
 	// read signing key
 	var signing_length = message.readUInt8(offset++)

@@ -197,6 +197,9 @@ function controlConnection(id, tunnel) {
 			tunnel.emit('giveCert', certS, ecertS, function(err) {
 				if (!err) connection.call('ok')
 			})
+		},
+		ok: function() {
+			tunnel.emit('ok')
 		}
 	})
 	return connection

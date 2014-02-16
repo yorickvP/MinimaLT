@@ -28,9 +28,9 @@ module.exports.domainservice = function(ext_ip, port, key, cb) {
 	})
 	return server
 }
-module.exports.nameservice = function(port, cb) {
+module.exports.nameservice = function(ext_ip, port, key, cb) {
 	var server = new Socket(port)
-	server.listen()
+	server.listen(ext_ip, key.cert, key.signing, key.boxing, false)
 	server.on('giveCert', cb)
 	return server
 }

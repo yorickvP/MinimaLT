@@ -53,6 +53,15 @@ Socket.prototype.addTunnel = function(tun, ip, port) {
 	tun.on('requestCert', function() {
 		self.emit.apply(self, ['requestCert'].concat([].slice.call(arguments)))
 	})
+	tun.on('giveCert', function(brec_certD, brec_ecertD, cb) {
+		var rec_certD, rec_ecertD
+		try {
+			rec_certD = certificate.Cert.fromBufferNoKey(brec_certD)
+			rec_ecertD = certificate.ECert.fromBuffer(rec_certD.signing, brec_ecertD)
+			assert(rec_certD.matches(rec_ecertD))
+		} catch(e) { return }
+		self.emit('giveCert', rec_certD, rec_ecertD, cb)
+	})
 	this.tunnels.push(tun)
 }
 Socket.prototype.makeTunECert = function(eCert) {
@@ -117,6 +126,15 @@ Socket.prototype.rotateECert = function() {
 	var ecert = this.certificate.generateECert(this.long_signing, this.ext_ip, this.port, 0, 0, 12e5)
 	this.decoding_keys.push(ecert.eBoxing)
 	this.ephemeral_certificate = ecert.eCert
+}
+Socket.prototype.advertise = function(name_service, cb) {
+	var self = this
+	this.lookupIdent(name_service, function(cert, eCert) {
+		var tun = self.makeTunECert(eCert)
+		tun.connections[0].call('giveCert', self.certificate.toBuffer(), self.ephemeral_certificate.toBuffer())
+		tun.once('ok', cb)
+		// TODO: update on new ecert
+	})
 }
 Socket.prototype.setDomainService = function(ip, port, certD) {
 	DEBUG('setting domain service to', ip, ':', port)
