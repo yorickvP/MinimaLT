@@ -6,8 +6,7 @@ Some changes had to be made to accomodate a node.js userspace implementation, an
 
 For now, this module is very incomplete. The absolute basics are there, but right now, there is no resistance against packet loss, errors, and no congestion control. Furthermore, there is no protection against sending packets bigger than the MTU, which will silently be dropped. I am not at all sure that the encryption is correct. You should probably not use this anywhere near practice.
 
-Getting it to work
---------
+## Getting it to work
 
 The installation should be simple, an `npm install` call should suffice. Afterwards, , replace the extractbytes function in `node_modules/js-nacl/lib/nacl_factory.js` with
 
@@ -17,8 +16,7 @@ The installation should be simple, an `npm install` call should suffice. Afterwa
     }
 
 
-Running the tests
--------
+## Running the tests
 
 The tests use mocha, so run `mocha`.
 
