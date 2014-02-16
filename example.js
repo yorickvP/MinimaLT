@@ -26,7 +26,7 @@ var known_certs = []
 
 var name_cert = minimaLT.generate_servercert('name.localhost')
 var nameservice = minimaLT.nameservice('127.0.0.1', 21397, name_cert, function(cert, eCert, cb) {
-	console.log('got certificate from client')
+	console.log('got certificate from client for', cert.hostname)
 	known_certs.push([cert, eCert])
 	cb(null)
 })
@@ -36,7 +36,7 @@ known_certs.push([name_cert.cert, nameservice.ephemeral_certificate])
 
 var domain_cert = minimaLT.generate_servercert('domain.localhost')
 var domainservice = minimaLT.domainservice('127.0.0.1', 21396, domain_cert, function(ident, cb) {
-	console.log("got domain service request", ident)
+	console.log("got domain service request for", ident.hostname)
 	known_certs.some(function(certpair) {
 		if (ident.matches(certpair[0])) {
 			cb(null, certpair[0].toBuffer(), certpair[1].toBuffer())

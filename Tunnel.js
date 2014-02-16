@@ -8,12 +8,12 @@ var util = require('util')
 var events = require('events')
 
 function DEBUG(tun, str) {
-	console.log.apply(console, ["Tunnel:", tun.TID.getBuffer().toString('hex'), tun.client ? '(client):' : 'server:'].concat(
+	console.log.apply(console, ["Tunnel ", tun.TID.getBuffer().toString('hex'), tun.client ? '(client):' : '(server):'].concat(
 		[].slice.call(arguments, 1)))
 }
 
 function fmt_rpc(con, rpc) {
-	return con + " " + util.inspect(rpc,{depth:0})
+	return con + " " + rpc[0]
 }
 
 function Tunnel(remote_pubkey, own_keys, TID) {
@@ -46,7 +46,7 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 }
 util.inherits(Tunnel, events.EventEmitter)
 Tunnel.prototype.make_key = function() {
-	DEBUG(this, "generating new key")
+	DEBUG(this, "generating C'")
 	var keypair = crypto.make_keypair()
 	this.own_pubkey = keypair.public
 	// XXX: should use a clock that doesn't
@@ -59,7 +59,6 @@ Tunnel.prototype.make_key = function() {
 	}
 }
 Tunnel.prototype.generate_secret = function(privkey) {
-	DEBUG(this, "calculating secret from keys")
 	this.secret = crypto.shared_secret(this.remote_pubkey, privkey)
 }
 Tunnel.prototype.recv_packet = function(recv_pkt, rinfo) {
@@ -70,8 +69,8 @@ Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 	var self = this
 	recv_pkt.payload = packet.parsePayload(recv_pkt.payload)
 	// TODO sequencing happens here
+	DEBUG(self, "received", recv_pkt.payload.RPC.map(function(x) { return x.cid + ',' + x.rpc[0]}))
 	recv_pkt.payload.RPC.forEach(function(rpc) {
-		DEBUG(self, "received", fmt_rpc(rpc.cid, rpc.rpc))
 		self.connections[rpc.cid].receive(rpc.rpc)
 	})
 }
@@ -105,7 +104,7 @@ Tunnel.prototype.flush_rpcs = function() {
 		outPacket.pubKey = this.pending_pubkey
 		this.pending_pubkey = null
 	}
-	DEBUG(this, "sending a packet containing", this.pending_rpcs)
+	DEBUG(this, "sending a packet containing", this.pending_rpcs.map(function(x) { return x.cid + ',' + x.rpc[0]}))
 	outPacket.payload = new Buffer(crypto.box(outPacket.payload, crypto.make_nonce(this.TID, outPacket.nonce), this.secret))
 	outPacket = packet.makePacket(outPacket)
 	this.pending_rpcs = []

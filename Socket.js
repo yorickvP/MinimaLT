@@ -74,7 +74,7 @@ Socket.prototype.makeTunECert = function(eCert) {
 	return tun
 }
 Socket.prototype.lookupIdent = function(ident, cb) {
-	DEBUG('looking up', ident)
+	DEBUG('looking up', ident.hostname)
 	var self = this
 	function givecert_cb(brec_certD, brec_ecertD) {
 		var rec_certD, rec_ecertD
@@ -108,7 +108,7 @@ Socket.prototype.connectECert = function(eCert, servicename, own_auth_key, rpcs)
 	return tun.create(servicename, own_auth_key, rpcs)
 }
 Socket.prototype.listen = function(ext_ip, cert, signing, boxing, accept) {
-	DEBUG('accepting unknown connections, generating key')
+	DEBUG('accepting connections')
 	this.acceptUnknown = true
 	this.ext_ip = ext_ip
 	// if accept, allow connections to be encrypted using the long-term
@@ -122,7 +122,7 @@ Socket.prototype.listen = function(ext_ip, cert, signing, boxing, accept) {
 }
 Socket.prototype.rotateECert = function() {
 	// TODO: actually rotate
-	DEBUG('generating ECert')
+	DEBUG('generating eCert')
 	var ecert = this.certificate.generateECert(this.long_signing, this.ext_ip, this.port, 0, 0, 12e5)
 	this.decoding_keys.push(ecert.eBoxing)
 	this.ephemeral_certificate = ecert.eCert
@@ -137,7 +137,7 @@ Socket.prototype.advertise = function(name_service, cb) {
 	})
 }
 Socket.prototype.setDomainService = function(ip, port, certD) {
-	DEBUG('setting domain service to', ip, ':', port)
+	DEBUG('connecting to domain service', ip, ':', port)
 	var T1 = new Tunnel(certD.boxing)
 	this.addTunnel(T1, ip, port)
 	T1.do_rpc(0, ['requestCert', certD.toIdentity().toBuffer()], T1.own_pubkey)
@@ -147,7 +147,6 @@ Socket.prototype.setDomainService = function(ip, port, certD) {
 		var rec_ecertD = certificate.ECert.fromBuffer(certD.signing, brec_ecertD)
 		assert(certD.matches(rec_certD))
 		assert(certD.matches(rec_ecertD))
-		DEBUG('got ecertD')
 		self.domain_T2 = self.makeTunECert(rec_ecertD)
 		self.emit('domainservice')
 	})
