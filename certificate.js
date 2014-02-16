@@ -218,7 +218,7 @@ ECert.fromBuffer = function(signing_key, signed_message) {
 	var offset = 0
 
 	// write IP
-	var ip = convertIPtoUInt32(message.readUint32BE(offset))
+	var ip = convertUInt32toIP(message.readUInt32BE(offset))
 	offset += 4
 	// write port
 	var port = message.readUInt16BE(offset)
