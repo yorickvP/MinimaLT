@@ -12,6 +12,10 @@ function DEBUG(tun, str) {
 		[].slice.call(arguments, 1)))
 }
 
+function fmt_rpc(con, rpc) {
+	return con + " " + util.inspect(rpc,{depth:0})
+}
+
 function Tunnel(remote_pubkey, own_keys, TID) {
 	events.EventEmitter.call(this)
 	if (TID) {
@@ -67,7 +71,7 @@ Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 	recv_pkt.payload = packet.parsePayload(recv_pkt.payload)
 	// TODO sequencing happens here
 	recv_pkt.payload.RPC.forEach(function(rpc) {
-		DEBUG(self, "received " + rpc.cid, rpc.rpc.join(','))
+		DEBUG(self, "received", fmt_rpc(rpc.cid, rpc.rpc))
 		self.connections[rpc.cid].receive(rpc.rpc)
 	})
 }
@@ -106,7 +110,7 @@ Tunnel.prototype.flush_rpcs = function() {
 	outPacket = packet.makePacket(outPacket)
 	this.pending_rpcs = []
 	this.emit('sendpacket', outPacket)
-	console.log("outputting packet", outPacket.toString('hex'))
+	//console.log("outputting packet", outPacket.toString('hex'))
 }
 Tunnel.prototype.send_connect = function() {
 	this.do_rpc(0, ["nextTid", this.TID, this.own_pubkey], this.own_pubkey)
