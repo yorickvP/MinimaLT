@@ -27,6 +27,10 @@ module.exports.verifyUserAuth = function(msg, myboxing, theirboxing) {
 	return memcmp(unboxed_S, myboxing.public)
 }
 module.exports.makePuzzle = function(serverKey, clientKey, k, TID, w) {
+	var p = module.exports.makePuzzleDecoded(serverKey, clientKey, k, TID, w)
+	return Buffer.concat([p[0], p[1], new Buffer([p[2]]), p[3].getBuffer()])
+}
+module.exports.makePuzzleDecoded = function(serverKey, clientKey, k, TID, w) {
 	var n = new Int64(Date.now())
 	var nonce = crypto.make_nonce(TID, n)
 	var r = crypto.secretBox(Buffer.concat([serverKey, clientKey]), nonce, k)
@@ -35,11 +39,9 @@ module.exports.makePuzzle = function(serverKey, clientKey, k, TID, w) {
 	//q[q.length - 1] = (q[q.length - 1] >> w) << w
 	zero_bits(q, w, 0)
 	var H_r = crypto.hashPuzzle(r)
-	return Buffer.concat([q, H_r, new Buffer([w]), n.getBuffer()])
+	return [q, H_r, w, n]
 }
-module.exports.checkPuzzle = function(serverKey, clientKey, k, TID, puzzleResp) {
-	var r = puzzleResp.slice(0, puzzleResp.length - 8)
-	var n_ = new Int64(puzzleResp, puzzleResp.length - 8)
+module.exports.checkPuzzleDecoded = function(serverKey, clientKey, k, TID, r, n_) {
 	if (Date.now() - n_ > 3e5) {
 		// too long in the past
 		return false
@@ -59,6 +61,11 @@ module.exports.checkPuzzle = function(serverKey, clientKey, k, TID, puzzleResp) 
 	}
 	return true
 }
+module.exports.checkPuzzle = function(serverKey, clientKey, k, TID, puzzleResp) {
+	var r = puzzleResp.slice(0, puzzleResp.length - 8)
+	var n_ = new Int64(puzzleResp, puzzleResp.length - 8)
+	return module.exports.checkPuzzleDecoded(serverKey, clientKey, k, TID, r, n_)
+}
 module.exports.solvePuzzle = function(TID, puzzle) {
 	if (puzzle.length != 121) return null
 	//  puzzles should be 121 bytes, really
@@ -66,10 +73,15 @@ module.exports.solvePuzzle = function(TID, puzzle) {
 	var H_r = puzzle.slice(80, 112)
 	var w = puzzle[112]
 	var n_ = new Int64(puzzle, 113)
+	return Buffer.concat([
+		module.exports.solvePuzzleDecoded(TID, q, H_r, w, n_),
+		n_.getBuffer()])
+}
+module.exports.solvePuzzleDecoded = function(TID, q, H_r, w, n_) {
 	for(var x = 0; x < Math.pow(2, w); x++) {
 		zero_bits(q, w, x)
 		if (memcmp(crypto.hashPuzzle(q), H_r)) {
-			return Buffer.concat([q, n_.getBuffer()])
+			return q
 		}
 	}
 	// not found for some reason

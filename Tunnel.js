@@ -150,6 +150,18 @@ Tunnel.prototype.reKey = function() {
 Tunnel.prototype.requestRekey = function() {
 	this.connections[0].call('rekeyNow')
 }
+Tunnel.prototype.posePuzzle = function(puzzle_key, difficulty, cb) {
+	var puzzle = auth.makePuzzleDecoded(this.own_pubkey, this.remote_pubkey, puzzle_key, this.TID, difficulty)
+	this.connections[0].call('puzz', puzzle[0], puzzle[1], puzzle[2], puzzle[3].getBuffer())
+	var self = this
+	this.once('puzzSoln', function(r, n_) {
+		if (auth.checkPuzzleDecoded(self.own_pubkey, self.remote_pubkey, puzzle_key, self.TID, r, new Int64(n_))) {
+			cb(true)
+		} else {
+			cb(false)
+		}
+	})
+}
 
 
 Tunnel.fromFirstPacket = function(sock, recv_pkt, rinfo, own_keys) {
@@ -243,6 +255,14 @@ function controlConnection(id, tunnel) {
 		},
 		ok: function() {
 			tunnel.emit('ok')
+		},
+		puzz: function(q, H_r, w, n_) {
+			var In_ = new Int64(n_)
+			var r = auth.solvePuzzleDecoded(tunnel.TID, q, H_r, w, In_)
+			connection.call('puzzSoln', r, n_)
+		},
+		puzzSoln: function(r, n_) {
+			this.tunnel.emit('puzzSoln', r, n_)
 		}
 	})
 	return connection
