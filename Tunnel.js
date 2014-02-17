@@ -62,6 +62,9 @@ Tunnel.prototype.make_key = function() {
 Tunnel.prototype.generate_secret = function(privkey) {
 	this.secret = crypto.shared_secret(this.remote_pubkey, privkey)
 }
+Tunnel.prototype.hash_secret = function() {
+	this.secret = crypto.hashSecret(this.secret)
+}
 Tunnel.prototype.recv_packet = function(recv_pkt, rinfo) {
 	recv_pkt.payload = crypto.unbox(recv_pkt.payload, crypto.make_nonce(recv_pkt.TID, recv_pkt.nonce), this.secret)
 	this.recv_decrypted_packet(recv_pkt, rinfo)
@@ -129,6 +132,24 @@ Tunnel.prototype.createAuth = function(servicename, authkey, auth_msg, rpcs) {
 	this.connections[con.cid] = con
 	return con
 }
+Tunnel.prototype.reKey = function() {
+	DEBUG(this, 'doing a rekey')
+	var TID = crypto.random_Int64()
+	TID.buffer[0] &= 0x3F // leave out the two upper bits, we're using those
+	var pubkey = crypto.make_keypair().public
+	this.do_rpc(0, ['nextTid', TID, pubkey])
+	this.flush_rpcs()
+	// TODO: don't lose everything the server sends
+	// between now and when it recieves the packet
+	// maybe keep this tunnel open for a while?
+	// or resend...
+	this.TID = TID
+	this.hash_secret()
+	this.do_rpc(0, ['nextTid', TID, pubkey], pubkey)
+}
+Tunnel.prototype.requestRekey = function() {
+	this.connections[0].call('rekeyNow')
+}
 
 
 Tunnel.fromFirstPacket = function(sock, recv_pkt, rinfo, own_keys) {
@@ -165,9 +186,13 @@ function controlConnection(id, tunnel) {
 				// TODO compare the C_ with the one in the packet
 				void 0
 			} else {
-				// TODO change the tunnel ID and hash the secret
-				void 0
+				// do not flush rpcs here, client already changed TID
+				tunnel.TID = t
+				tunnel.hash_secret()
 			}
+		},
+		rekeyNow: function() {
+			tunnel.reKey()
 		},
 		create: function(c, y) {
 			assert(typeof c == 'number')
