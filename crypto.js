@@ -35,6 +35,16 @@ var crypto = {
 			throw new Error("message should be a buffer")
 		return nacl.crypto_box_open(msgBin, nonceBin, theirpub, mypriv)
 	},
+	secretUnbox: function(msgBin, nonceBin, secret) {
+		if (!Buffer.isBuffer(msgBin))
+			throw new Error("message should be a buffer")
+		return nacl.crypto_secretbox_open(msgBin, nonceBin, secret)
+	},
+	secretBox: function(msgBin, nonceBin, secret) {
+		if (!Buffer.isBuffer(msgBin))
+			throw new Error("message should be a buffer")
+		return nacl.crypto_secretbox(msgBin, nonceBin, secret)
+	},
 	make_nonce: function(TID, nonce) {
 		var res = new Buffer(24)
 		// the first 8 bytes spell minimaLT for now
@@ -75,6 +85,11 @@ var crypto = {
 	hashSecret: function(secret) {
 		// XXX: should this be scrypt/PBKDF2 instead?
 		return nacl.crypto_hash_sha256(secret)
+	},
+	hashPuzzle: function(r) {
+		// TODO: this shoud *really* be scrypt.
+		// thanks bitcoin.
+		return nacl.crypto_hash_sha256(r)
 	}
 }
 

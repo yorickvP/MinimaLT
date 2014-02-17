@@ -172,6 +172,110 @@ describe('crypto', function(){
 			})
 		})
 	})
+	describe('.secretBox', function(){
+		it('should be a buffer', function(){
+			assert(Buffer.isBuffer(crypto.secretBox(new Buffer("hello"), nonce, secret)))
+		})
+		it('should compute the correct message', function(){
+			assert.deepEqual(crypto.secretBox(new Buffer("hello"), nonce, secret), encrypted_hello)
+		})
+		it('should error on wrong argument #1', function(){
+			var m = new Buffer('hello'), n = nonce, s = secret
+			m = "hello"
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+			m = 10
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+			// XXX: allow empty string to work?
+		})
+		it('should error on wrong argument #2', function(){
+			var m = new Buffer('hello'), n = nonce, s = secret
+			n = "nonce"
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+			n = 10
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+			n = new Buffer(1)
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+		})
+		it('should error on wrong argument #3', function(){
+			var m = new Buffer('hello'), n = nonce, s = secret
+			s = "secret"
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+			s = 10
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+			s = new Buffer(10)
+			assert.throws(function(){
+				crypto.secretBox(m, n, s)
+			})
+		})
+	})
+	describe('.secretUnbox', function(){
+		it('should be a buffer', function(){
+			assert(Buffer.isBuffer(crypto.secretUnbox(encrypted_hello, nonce, secret)))
+		})
+		it('should decrypt a message', function(){
+			var nonce = new Buffer(24)
+			nonce.fill(42)
+			var secret = new Buffer("KeputHe5jy7UJST6HxSPCHYht5KyV5n9Ju73SrwmBJM=", 'base64')
+			var encrypted_hello = new Buffer("0gg0FLPlbFA7x7IvYZezFR+OjXDm", "base64")
+			assert.deepEqual(crypto.secretUnbox(encrypted_hello, nonce, secret), new Buffer("hello"))
+		})
+		it('should error on wrong argument #1', function(){
+			var m = encrypted_hello, n = nonce, s = secret
+			m = "encrypted_hello"
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+			m = 10
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+			// XXX: allow empty string to work?
+		})
+		it('should error on wrong argument #2', function(){
+			var m = encrypted_hello, n = nonce, s = secret
+			n = "nonce"
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+			n = 10
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+			n = new Buffer(1)
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+		})
+		it('should error on wrong argument #3', function(){
+			var m = encrypted_hello, n = nonce, s = secret
+			s = "secret"
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+			s = 10
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+			s = new Buffer(10)
+			assert.throws(function(){
+				crypto.secretUnbox(m, n, s)
+			})
+		})
+	})
 	describe('.boxWithKeys', function(){
 		it('should be a buffer', function(){
 			assert(Buffer.isBuffer(crypto.boxWithKeys(new Buffer("hello"), nonce, aliceK.public, bobK.private)))
@@ -439,6 +543,14 @@ describe('crypto', function(){
 		})
 		it('should compute to the correct secret', function() {
 			assert.deepEqual(crypto.hashSecret(secret), new Buffer('nHjM9N/3Dp2fTu3aP41ec5OcZzphLmF3tARdal/0jzc=', 'base64'))
+		})
+	})
+	describe('.hashPuzzle', function() {
+		it('should be a buffer', function() {
+			assert(Buffer.isBuffer(crypto.hashPuzzle(secret)))
+		})
+		it('should compute to the correct secret', function() {
+			assert.deepEqual(crypto.hashPuzzle(secret), new Buffer('nHjM9N/3Dp2fTu3aP41ec5OcZzphLmF3tARdal/0jzc=', 'base64'))
 		})
 	})
 })
