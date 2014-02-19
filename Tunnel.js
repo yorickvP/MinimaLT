@@ -45,11 +45,19 @@ function RPCOutStream(tunnel) {
 	this.nonce = crypto.random_UInt32()*2
 	this.pending = []
 	this.window = []
-	this.max_window_size = 8
+	this.window_size = 0
+	this.initial_window = this.cwnd =
+		this.MTU > 2190 ? 2 :
+		this.MTU <=1095 ? 4 : 3
+	// start out the slow start threshold arbitrarily high
+	this.ssthresh = 128
+	this.cwnd_ack = 0
 	this.rtt_rtt = 0
 	this.rtt_srtt = 0
 	this.rtt_rttvar = 750
 	this.rtt_rto = 3000
+	this.last_send = 0
+	this.duplicate_acks = 0
 	stream.Writable.call(this, {
 		objectMode: true
 	})
@@ -57,16 +65,20 @@ function RPCOutStream(tunnel) {
 }
 util.inherits(RPCOutStream, stream.Writable)
 RPCOutStream.prototype._write = function(chunk, encoding, callback) {
-	if (this.window.length < this.max_window_size) {
+	chunk.size = RPC.rpc_payload_length([chunk])
+	if (this.last_send != 0 && Date.now() - this.last_send > this.rtt_rto) {
+		// connection idle, restart slow start
+		this.cwnd = Math.min(this.initial_window, this.cwnd)
+	}
+	// TODO: count this in bytes?
+	if (this.window.length < this.cwnd) {
 		this.pending.push(chunk)
-		chunk.size = RPC.rpc_payload_length([chunk])
 		this.flushSoon()
 		callback()
 	} else {
 		var self = this
 		self.resumeWrite = function() {
 			self.pending.push(chunk)
-			chunk.size = RPC.rpc_payload_length([chunk])
 			self.flushSoon()
 			callback()
 			self.resumeWrite = null
@@ -93,7 +105,6 @@ RPCOutStream.prototype.updateRTT = function(measuredRTT) {
 		this.rtt_srtt = (1 - (1/8)) * this.rtt_srtt + (1/8) * measuredRTT
 	}
 	this.rtt_rto = clamp_rto(RTT_RTOCALC(this))
-	console.log('measured time', this.rtt_rto)
 }
 RPCOutStream.prototype.flush = function() {
 	this.do_flush_soon = false
@@ -130,20 +141,40 @@ RPCOutStream.prototype.flush = function() {
 	outPacket = packet.makePacket(outPacket)
 	this.tun.emit('sendpacket', outPacket)
 	// do not do fancy things with ack packets.
-	if (seq != 0)
-		this.window.push({time: Date.now(), seq: seq, pkt: outPacket, rtt_nrexmt: 0, timer: null})
+	if (seq != 0) {
+		this.window.push({time: Date.now(), seq: seq, pkt: outPacket,
+			rtt_nrexmt: 0, timer: null,
+			size: this.MTU - out_size
+		})
+		this.last_send = Date.now()
+	}
 	this.ack = 0
 	this.setTimer()
 	if (this.pending.length) this.flush()
 }
 RPCOutStream.prototype.windowShift = function(ack) {
+	var ws
 	while(this.window.length && this.window[0].seq <= ack) {
-		var ws = this.window.shift()
+		ws = this.window.shift()
 		if (ws.timer != null) clearTimeout(ws.timer)
 		if (!ws.discount) this.updateRTT(Date.now() - ws.time)
+		this.cwnd_ack += ws.size
+	}
+	if (ws) {
+		if(this.cwnd <= this.ssthresh) {
+			// slow start
+			this.cwnd += 1
+			this.cwnd_ack = 0
+		} else if (this.cwnd_ack > this.cwnd * this.MTU){
+			// congestion avoidance
+			this.cwnd += 1
+			this.cwnd_ack = 0
+		}
+		console.log('cwnd', this.cwnd, this.ssthresh)
 	}
 	// resume writing now
-	if (this.resumeWrite) this.resumeWrite()
+	// TODO: count window in bytes?
+	if (this.resumeWrite && this.window.length < this.cwnd) this.resumeWrite()
 }
 RPCOutStream.prototype.retransmit = function() {
 	DEBUG(this.tun, 'retransmitting packet', this.window[0].seq)
@@ -156,6 +187,11 @@ RPCOutStream.prototype.retransmit = function() {
 RPCOutStream.prototype.timeout = function() {
 	this.rtt_rto *= 2 // backoff exponentially
 	this.window[0].timer = null
+	if (this.window[0].rtt_nrexmt == 0) {
+		// adjust ssthresh
+		this.ssthresh = Math.max(this.window.length / 2, 2)
+		this.cwnd = 1
+	}
 	if (++this.window[0].rtt_nrexmt > constants.RTT_MAXNREXMT) {
 		this.emit('error', "retransmit count reached")
 		return
@@ -171,11 +207,38 @@ RPCOutStream.prototype.setTimer = function() {
 }
 RPCOutStream.prototype.gotPacket = function(seq, ack) {
 	if (ack != 0) {
-		this.windowShift(ack)
+		if (this.window[0] && this.window[0].seq == ack - 1) {
+			// fast retransmit
+			this.duplicate_acks++
+			if (this.duplicate_acks < 3) {
+				// RFC 3042
+				if (this.resumeWrite) this.resumeWrite()
+			}
+			if (this.duplicate_acks == 3) {
+				this.retransmit()
+				this.ssthresh = Math.max(this.window.length / 2, 2)
+				this.duplicate_acks = 0
+				this.cwnd = this.ssthresh + 3
+			}
+			if (this.duplicate_acks > 3) {
+				this.cwnd += 1
+			}
+			// TODO: count window in bytes?
+			if (this.resumeWrite && this.window.length < this.cwnd) this.resumeWrite()
+		} else {
+			if (this.duplicate_acks >= 3) {
+				// "deflate" the window
+				this.cwnd = this.ssthresh
+			}
+			this.duplicate_acks = 0
+			this.windowShift(ack)
+		}
 	}
 	if (seq != 0) {
 		if (seq <= this.ackd) {
 			// this is a duplicate packet, we already confirmed it once
+			// should we confirm it again? I think so, because duplicates
+			// can be sent when the ack packet is lost
 			this.ackPacket(seq)
 			return false
 		}
