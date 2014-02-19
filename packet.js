@@ -7,14 +7,14 @@ var packet = {
 	/** parsePacket: parse the non-encrypted parts of a minimaLT packet
 		be aware this modifies the source buffer a(two) bit(s) so you only do it once */
 	parsePacket: function(buf) {
-		if (buf.length < 44) throw new Error("invalid packet length")
+		if (buf.length < 40) throw new Error("invalid packet length")
 		var TID = new Int64(buf, 0)
 		// the first two bits are important
 		var hasPubKey = !!(TID.buffer[0] & (1<<7))
 		var hasPuzzle = !!(TID.buffer[0] & (1<<6))
 		TID.buffer[0] &= (1<<6)-1
 		// calculate the minimum packet length
-		if (buf.length < (44 + (hasPubKey ? 32 : 0) + (hasPuzzle ? 148 : 0)))
+		if (buf.length < (40 + (hasPubKey ? 32 : 0) + (hasPuzzle ? 148 : 0)))
 			throw new Error("invalid packet length")
 		var nonce = new Int64(buf, 8)
 		var ret = {
@@ -57,7 +57,7 @@ var packet = {
 		return Buffer.concat(list, length)
 	},
 	parsePayload: function(payload) {
-		if (payload.length < 12) throw new Error("invalid packet length")
+		if (payload.length < 8) throw new Error("invalid packet length")
 		var sequence = payload.readUInt32BE(0)
 		var acknowledge = payload.readUInt32BE(4)
 		var RPCs = RPC.deserialize_rpc_payload(payload.slice(8))

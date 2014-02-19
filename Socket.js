@@ -94,7 +94,7 @@ Socket.prototype.lookupIdent = function(ident, cb) {
 		cb(rec_certD, rec_ecertD)
 	}
 	if (this.domain_T2) {
-		this.domain_T2.connections[0].call('requestCert', ident.toBuffer())
+		this.domain_T2.control.call('requestCert', ident.toBuffer())
 		this.domain_T2.on('giveCert', givecert_cb)
 	} else {
 		this.once('domainservice', function() {
@@ -143,7 +143,7 @@ Socket.prototype.advertise = function(name_service, cb) {
 	var self = this
 	this.lookupIdent(name_service, function(cert, eCert) {
 		var tun = self.makeTunECert(eCert)
-		tun.connections[0].call('giveCert', self.certificate.toBuffer(), self.ephemeral_certificate.toBuffer())
+		tun.control.call('giveCert', self.certificate.toBuffer(), self.ephemeral_certificate.toBuffer())
 		tun.once('ok', cb)
 		// TODO: update on new ecert
 	})

@@ -7,6 +7,14 @@ var auth = require('./auth.js')
 var assert = require('assert')
 var util = require('util')
 var events = require('events')
+var stream = require('stream')
+var RPC = require('./RPC')
+
+var constants = {
+	RTT_RXTMIN: 1000, /* min retransmit timeout value */
+	RTT_RXTMAX: 60000, /* max retransmit timeout value, in microseconds */
+	RTT_MAXNREXMT: 3 /* max # times to retransmit */
+}
 
 function DEBUG(tun, str) {
 	console.log.apply(console, ["Tunnel ", tun.TID.getBuffer().toString('hex'), tun.client ? '(client):' : '(server):'].concat(
@@ -15,6 +23,171 @@ function DEBUG(tun, str) {
 
 function fmt_rpc(con, rpc) {
 	return con + " " + rpc[0]
+}
+// rtt code from Richard Stevens - Unix Network Programming
+function RTT_RTOCALC(ptr) {
+	return ptr.rtt_srtt + (4 * ptr.rtt_rttvar)
+}
+function clamp_rto(rto) {
+	return Math.max(constants.RTT_RXTMIN, Math.min(constants.RTT_RXTMAX, rto))
+}
+function RPCOutStream(tunnel) {
+	this.seq = crypto.random_UInt32()
+	this.ack = 0
+	this.ackd = 0
+	this.tun = tunnel
+	this.MTU = 1472
+	// the paper specifies a nonce that increases with time
+	// but JS clocks aren't that accurate, so we risk having duplicates
+	// and that is apparently a VERY BAD THING, so stick to a counter for now
+	// TODO: handle overflows, make a UInt64?
+	this.nonce = crypto.random_UInt32()*2
+	this.pending = []
+	this.window = []
+	this.max_window_size = 8
+	this.rtt_rtt = 0
+	this.rtt_srtt = 0
+	this.rtt_rttvar = 350
+	this.rtt_rto = clamp_rto(RTT_RTOCALC(this))
+	stream.Writable.call(this, {
+		objectMode: true
+	})
+	this.do_flush_soon = false
+}
+util.inherits(RPCOutStream, stream.Writable)
+RPCOutStream.prototype._write = function(chunk, encoding, callback) {
+	if (this.window.length < this.max_window_size) {
+		this.pending.push(chunk)
+		chunk.size = RPC.rpc_payload_length([chunk])
+		this.flushSoon()
+		callback()
+	} else {
+		var self = this
+		self.resumeWrite = function() {
+			self.pending.push(chunk)
+			chunk.size = RPC.rpc_payload_length([chunk])
+			self.flushSoon()
+			callback()
+			self.resumeWrite = null
+		}
+	}
+}
+RPCOutStream.prototype.flushSoon = function() {
+	if (this.do_flush_soon) return
+	else {
+		this.do_flush_soon = true
+		process.nextTick(this.flush.bind(this))
+	}
+}
+RPCOutStream.prototype.updateRTT = function(measuredRTT) {
+	this.rtt_rtt = measuredRTT
+	var delta = this.rtt_rtt - this.rtt_srtt
+	this.rtt_srtt += delta / 8
+	if (delta < 0.0) delta = - delta
+	this.rtt_rttvar += (delta - this.rtt_rttvar) / 4
+	this.rtt_rto = clamp_rto(RTT_RTOCALC(this))
+	console.log('measured time', this.rtt_rto)
+}
+RPCOutStream.prototype.flush = function() {
+	this.do_flush_soon = false
+	var out_size = this.MTU - 32
+	var outPacket = {
+		TID: this.tun.TID,
+		nonce: crypto.generate_nonce(this.tun.client, this.nonce++),
+		hasPubKey: false,
+		hasPuzzle: false
+		// TODO sequencing happens here
+	}
+	var to_send = []
+	while(this.pending.length > 0 && out_size >= this.pending[0].size) {
+		var rpc = this.pending.shift()
+		out_size -= RPC.rpc_payload_length([rpc])
+		if (rpc.pubkey) {
+			out_size -= rpc.pubkey.length
+			outPacket.hasPubKey = true
+			outPacket.pubKey = rpc.pubkey
+		}
+		to_send.push(rpc)
+		if (out_size < 0) {
+			throw new Error('packet too big')
+		}
+	}
+	var seq = to_send.length ? this.seq++ : 0
+	DEBUG(this.tun, "sending a packet (seq "+seq+" ack "+this.ack+") containing",  to_send.map(function(x) { return x.cid + ',' + x.rpc[0]}))
+	outPacket.payload = packet.makePayload({
+		RPC: to_send,
+		sequence: seq,
+		acknowledge: this.ack
+	})
+	outPacket.payload = new Buffer(crypto.box(outPacket.payload, crypto.make_nonce(this.tun.TID, outPacket.nonce), this.tun.secret))
+	outPacket = packet.makePacket(outPacket)
+	this.tun.emit('sendpacket', outPacket)
+	// do not do fancy things with ack packets.
+	if (seq != 0)
+		this.window.push({time: Date.now(), seq: seq, pkt: outPacket, rtt_nrexmt: 0, timer: null})
+	this.ack = 0
+	this.setTimer()
+	if (this.pending.length) this.flush()
+}
+RPCOutStream.prototype.windowShift = function(ack) {
+	while(this.window.length && this.window[0].seq <= ack) {
+		var ws = this.window.shift()
+		if (ws.timer != null) clearTimeout(ws.timer)
+		if (!ws.discount) this.updateRTT(Date.now() - ws.time)
+	}
+	// resume writing now
+	if (this.resumeWrite) this.resumeWrite()
+}
+RPCOutStream.prototype.retransmit = function() {
+	DEBUG(this.tun, 'retransmitting packet', this.window[0].seq)
+	this.tun.emit('sendpacket', this.window[0].pkt)
+	this.window[0].time = Date.now()
+	// don't count lost packets in our RTT calculations
+	this.window[0].discount = true
+	this.setTimer()
+}
+RPCOutStream.prototype.timeout = function() {
+	this.rtt_rto *= 2 // backoff exponentially
+	this.window[0].timer = null
+	if (++this.window[0].rtt_nrexmt > constants.RTT_MAXNREXMT) {
+		this.emit('error', "retransmit count reached")
+		return
+	}
+	// don't count lost packets
+	this.window[0].discount = true
+	this.retransmit()
+}
+RPCOutStream.prototype.setTimer = function() {
+	if (this.window.length == 0) return
+	if (this.window[0].timer) clearTimeout(this.window[0].timer)
+	this.window[0].timer = setTimeout(this.timeout.bind(this), this.rtt_rto)
+}
+RPCOutStream.prototype.gotPacket = function(seq, ack) {
+	if (ack != 0) {
+		this.windowShift(ack)
+	}
+	if (seq != 0) {
+		if (seq <= this.ackd) {
+			// this is a duplicate packet, we already confirmed it once
+			this.ackPacket(seq)
+			return false
+		}
+		if (seq != this.ackd + 1 && this.ackd != 0) {
+			// there was a missing packet before this one,
+			// send a duplicate ack on the packet before it
+			this.ackPacket(this.ackd)
+			return false
+		}
+		if (seq == this.ackd + 1 || this.ackd == 0) {
+			this.ackPacket(seq)
+		}
+	}
+	return true
+}
+RPCOutStream.prototype.ackPacket = function(seq) {
+	this.ack = seq
+	this.ackd = Math.max(this.ackd, seq)
+	this.flushSoon()
 }
 
 function Tunnel(remote_pubkey, own_keys, TID) {
@@ -25,7 +198,6 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 		this.TID = crypto.random_Int64()
 		this.TID.buffer[0] &= 0x3F // leave out the two upper bits, we're using those
 	}
-	this.sequence = crypto.random_UInt32()
 	this.remote_pubkey = remote_pubkey
 	if (own_keys) {
 		this.client = false
@@ -35,15 +207,9 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 		this.client = true
 		this.make_key()
 	}
-	// the paper specifies a nonce that increases with time
-	// but JS clocks aren't that accurate, so we risk having duplicates
-	// and that is apparently a VERY BAD THING, so stick to a counter for now
-	// TODO: handle overflows, make a UInt64?
-	this.nonce = crypto.random_UInt32()*2
-	this.pending_rpcs = []
-	this.pending_pubkey = null
 	this.connections = []
-	this.connections[0] = controlConnection(0, this)
+	this.RPCOutStream = new RPCOutStream(this)
+	this.connections[0] = this.control = controlConnection(0, this)
 }
 util.inherits(Tunnel, events.EventEmitter)
 Tunnel.prototype.make_key = function() {
@@ -72,48 +238,14 @@ Tunnel.prototype.recv_packet = function(recv_pkt, rinfo) {
 Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 	var self = this
 	recv_pkt.payload = packet.parsePayload(recv_pkt.payload)
-	// TODO sequencing happens here
+	if (!this.RPCOutStream.gotPacket(recv_pkt.payload.sequence, recv_pkt.payload.acknowledge)) return
 	DEBUG(self, "received", recv_pkt.payload.RPC.map(function(x) { return x.cid + ',' + x.rpc[0]}))
 	recv_pkt.payload.RPC.forEach(function(rpc) {
 		self.connections[rpc.cid].receive(rpc.rpc)
 	})
 }
 Tunnel.prototype.do_rpc = function(connection, rpc, pubkey) {
-	var self = this
-	if (this.pending_rpcs.length === 0) setImmediate(function(){
-		self.flush_rpcs()
-	})
-	this.pending_rpcs.push({cid: connection, rpc: rpc})
-	if (pubkey) {
-		// TODO: check if there's already a pubkey waiting to be sent out 
-		this.pending_pubkey = pubkey
-	}
-}
-Tunnel.prototype.flush_rpcs = function() {
-	if (this.pending_rpcs.length < 1) return
-	var outPacket = {
-		TID: this.TID,
-		nonce: crypto.generate_nonce(this.client, this.nonce++),
-		hasPubKey: false,
-		hasPuzzle: false,
-		// TODO sequencing happens here
-		payload: packet.makePayload({
-			RPC: this.pending_rpcs,
-			sequence: this.sequence++,
-			acknowledge: 42
-		})
-	}
-	if (this.pending_pubkey) {
-		outPacket.hasPubKey = true
-		outPacket.pubKey = this.pending_pubkey
-		this.pending_pubkey = null
-	}
-	DEBUG(this, "sending a packet containing", this.pending_rpcs.map(function(x) { return x.cid + ',' + x.rpc[0]}))
-	outPacket.payload = new Buffer(crypto.box(outPacket.payload, crypto.make_nonce(this.TID, outPacket.nonce), this.secret))
-	outPacket = packet.makePacket(outPacket)
-	this.pending_rpcs = []
-	this.emit('sendpacket', outPacket)
-	//console.log("outputting packet", outPacket.toString('hex'))
+	this.RPCOutStream.write({cid: connection, rpc: rpc, pubkey: pubkey})
 }
 Tunnel.prototype.send_connect = function() {
 	this.do_rpc(0, ["nextTid", this.TID, this.own_pubkey], this.own_pubkey)
@@ -121,14 +253,14 @@ Tunnel.prototype.send_connect = function() {
 Tunnel.prototype.create = function(servicename, rpcs) {
 	var con = new Connection(this.connections.length, this)
 	if (rpcs) con.setRPCs(rpcs)
-	this.connections[0].call('create', con.cid, servicename)
+	this.control.call('create', con.cid, servicename)
 	this.connections[con.cid] = con
 	return con
 }
 Tunnel.prototype.createAuth = function(servicename, authkey, auth_msg, rpcs) {
 	var con = new Connection(this.connections.length, this)
 	if (rpcs) con.setRPCs(rpcs)
-	this.connections[0].call('createAuth', con.cid, servicename, authkey, auth_msg)
+	this.control.call('createAuth', con.cid, servicename, authkey, auth_msg)
 	this.connections[con.cid] = con
 	return con
 }
@@ -138,7 +270,7 @@ Tunnel.prototype.reKey = function() {
 	TID.buffer[0] &= 0x3F // leave out the two upper bits, we're using those
 	var pubkey = crypto.make_keypair().public
 	this.do_rpc(0, ['nextTid', TID, pubkey])
-	this.flush_rpcs()
+	//this.flush_rpcs()
 	// TODO: don't lose everything the server sends
 	// between now and when it recieves the packet
 	// maybe keep this tunnel open for a while?
@@ -148,11 +280,11 @@ Tunnel.prototype.reKey = function() {
 	this.do_rpc(0, ['nextTid', TID, pubkey], pubkey)
 }
 Tunnel.prototype.requestRekey = function() {
-	this.connections[0].call('rekeyNow')
+	this.control.call('rekeyNow')
 }
 Tunnel.prototype.posePuzzle = function(puzzle_key, difficulty, cb) {
 	var puzzle = auth.makePuzzleDecoded(this.own_pubkey, this.remote_pubkey, puzzle_key, this.TID, difficulty)
-	this.connections[0].call('puzz', puzzle[0], puzzle[1], puzzle[2], puzzle[3].getBuffer())
+	this.control.call('puzz', puzzle[0], puzzle[1], puzzle[2], puzzle[3].getBuffer())
 	var self = this
 	this.once('puzzSoln', function(r, n_) {
 		if (auth.checkPuzzleDecoded(self.own_pubkey, self.remote_pubkey, puzzle_key, self.TID, r, new Int64(n_))) {

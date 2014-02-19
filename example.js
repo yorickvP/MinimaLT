@@ -52,6 +52,10 @@ server.advertise(name_cert.cert.toIdentity(), function() {
 
 	client.connect(server_cert.cert.toIdentity(), "my_thing", client_key, function(connection) {
 		connection.call('ping', 42)
+		var x = 0
+		setInterval(function() {
+			connection.call('ping', x++)
+		}, 3000)
 		return {
 			pong: function(x) {
 				console.log("OMG PONG:", x)

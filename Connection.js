@@ -28,14 +28,14 @@ Connection.prototype.init_cb = function(err, rpcs) {
 	}
 }
 Connection.prototype.ack = function() {
-	this.tunnel.connections[0].call('ack', this.cid)
+	this.tunnel.control.call('ack', this.cid)
 	this.tunnel.connections[this.cid] = this
 }
 Connection.prototype.refuse = function() {
-	this.tunnel.connections[0].call('refuse', this.cid)
+	this.tunnel.control.call('refuse', this.cid)
 }
 Connection.prototype.close = function() {
-	this.tunnel.connections[0].call('close', this.cid)
+	this.tunnel.control.call('close', this.cid)
 	delete this.tunnel.connections[this.cid]
 }
 Connection.prototype.setRPCs = function(rpcs) {
