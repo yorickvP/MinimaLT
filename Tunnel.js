@@ -26,7 +26,8 @@ function fmt_rpc(con, rpc) {
 }
 // rtt code from Richard Stevens - Unix Network Programming
 function RTT_RTOCALC(ptr) {
-	return ptr.rtt_srtt + (4 * ptr.rtt_rttvar)
+	// clock granularity
+	return ptr.rtt_srtt + Math.max(15, 4 * ptr.rtt_rttvar)
 }
 function clamp_rto(rto) {
 	return Math.max(constants.RTT_RXTMIN, Math.min(constants.RTT_RXTMAX, rto))
@@ -47,8 +48,8 @@ function RPCOutStream(tunnel) {
 	this.max_window_size = 8
 	this.rtt_rtt = 0
 	this.rtt_srtt = 0
-	this.rtt_rttvar = 350
-	this.rtt_rto = clamp_rto(RTT_RTOCALC(this))
+	this.rtt_rttvar = 750
+	this.rtt_rto = 3000
 	stream.Writable.call(this, {
 		objectMode: true
 	})
@@ -80,11 +81,17 @@ RPCOutStream.prototype.flushSoon = function() {
 	}
 }
 RPCOutStream.prototype.updateRTT = function(measuredRTT) {
-	this.rtt_rtt = measuredRTT
-	var delta = this.rtt_rtt - this.rtt_srtt
-	this.rtt_srtt += delta / 8
-	if (delta < 0.0) delta = - delta
-	this.rtt_rttvar += (delta - this.rtt_rttvar) / 4
+	// see RFC 2988
+	if (this.rtt_rtt == 0) {
+		this.rtt_rtt = measuredRTT
+		this.rtt_srtt = measuredRTT
+		this.rtt_rttvar = measuredRTT / 2
+	} else {
+		this.rtt_rtt = measuredRTT
+		var delta = Math.abs(this.rtt_srtt - this.rtt_rtt)
+		this.rtt_rttvar = (1 - (1/4)) * this.rtt_rttvar + (1/4) * delta
+		this.rtt_srtt = (1 - (1/8)) * this.rtt_srtt + (1/8) * measuredRTT
+	}
 	this.rtt_rto = clamp_rto(RTT_RTOCALC(this))
 	console.log('measured time', this.rtt_rto)
 }
