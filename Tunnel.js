@@ -251,11 +251,8 @@ Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 		self.connections[rpc.cid].receive(rpc.rpc)
 	})
 }
-Tunnel.prototype.do_rpc = function(connection, rpc, pubkey) {
-	this.RPCOutStream.write({cid: connection, rpc: rpc, pubkey: pubkey})
-}
 Tunnel.prototype.send_connect = function() {
-	this.do_rpc(0, ["nextTid", this.TID, this.own_pubkey], this.own_pubkey)
+	this.control.callAdv(this.own_pubkey, null, "nextTid", this.TID, this.own_pubkey)
 }
 Tunnel.prototype.create = function(servicename, rpcs) {
 	var con = new Connection(this.connections.length, this)
@@ -276,7 +273,7 @@ Tunnel.prototype.reKey = function() {
 	var TID = crypto.random_Int64()
 	TID.buffer[0] &= 0x3F // leave out the two upper bits, we're using those
 	var pubkey = crypto.make_keypair().public
-	this.do_rpc(0, ['nextTid', TID, pubkey])
+	this.control.call('nextTid', TID, pubkey)
 	//this.flush_rpcs()
 	// TODO: don't lose everything the server sends
 	// between now and when it recieves the packet
@@ -284,7 +281,7 @@ Tunnel.prototype.reKey = function() {
 	// or resend...
 	this.TID = TID
 	this.hash_secret()
-	this.do_rpc(0, ['nextTid', TID, pubkey], pubkey)
+	this.control.callAdv(pubkey, null, 'nextTid', TID, pubkey)
 }
 Tunnel.prototype.requestRekey = function() {
 	this.control.call('rekeyNow')

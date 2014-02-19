@@ -152,7 +152,7 @@ Socket.prototype.setDomainService = function(ip, port, certD) {
 	DEBUG('connecting to domain service', ip, ':', port)
 	var T1 = new Tunnel(certD.boxing)
 	this.addTunnel(T1, ip, port)
-	T1.do_rpc(0, ['requestCert', certD.toIdentity().toBuffer()], T1.own_pubkey)
+	T1.control.callAdv(T1.own_pubkey, null, 'requestCert', certD.toIdentity().toBuffer())
 	var self = this
 	T1.once('giveCert', function(brec_certD, brec_ecertD) {
 		var rec_certD = certificate.Cert.fromBuffer(certD.signing, brec_certD)

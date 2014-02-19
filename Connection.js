@@ -59,7 +59,14 @@ Connection.prototype.receive = function(rpc){
 	}
 }
 Connection.prototype.call = function(name, args) {
-	this.tunnel.do_rpc(this.cid, [].slice.call(arguments))
+	this.callAdv.apply(this, [null, null].concat([].slice.call(arguments)))
+}
+Connection.prototype.callAdv = function(pubkey, puzzle, name, args) {
+	this.tunnel.RPCOutStream.write({
+		cid: this.cid,
+		pubkey: pubkey,
+		rpc: [].slice.call(arguments, 2)
+	})
 }
 
 module.exports = Connection
