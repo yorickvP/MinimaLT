@@ -20,11 +20,13 @@ function Socket(port, ext_ip) {
 	if (port) this.port = port
 	else this.port = ((Math.random()*(1<<15)) + (1<<15) - 1)|0
 	DEBUG("making new socket @ port", this.port)
+	var self = this 
 	this.socket.bind(this.port)
 	this.acceptUnknown = false
 	var self = this
 	this.decoding_keys = []
 	this.socket.on('message', function(msg, rinfo) {
+		console.log('got message from', rinfo)
 		var pkt = packet.parsePacket(msg)
 		if (!self.tunnels.some(function(tun){
 			if (tun.TID.equal(pkt.TID)) {
@@ -36,7 +38,7 @@ function Socket(port, ext_ip) {
 			if(self.acceptUnknown) {
 				DEBUG("accepting new tunnel from", rinfo)
 				var tun = Tunnel.fromFirstPacket(self, pkt, rinfo, self.decoding_keys)
-				self.addTunnel(tun, rinfo.ip, rinfo.port)
+				self.addTunnel(tun, rinfo.address, rinfo.port)
 				// fromFirstPacket decrypts the packet
 				tun.recv_decrypted_packet(pkt, rinfo)
 			}
