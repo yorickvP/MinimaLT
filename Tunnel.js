@@ -59,6 +59,9 @@ function RPCOutStream(tunnel) {
 	this.last_send = 0
 	this.rtt_timer = null
 	this.duplicate_acks = 0
+	this.T_last = Date.now()
+	this.T_prev = Date.now()
+	this.W_used = 0
 	stream.Writable.call(this, {
 		objectMode: true
 	})
@@ -67,10 +70,6 @@ function RPCOutStream(tunnel) {
 util.inherits(RPCOutStream, stream.Writable)
 RPCOutStream.prototype._write = function(chunk, encoding, callback) {
 	chunk.size = RPC.rpc_payload_length([chunk])
-	if (this.last_send != 0 && Date.now() - this.last_send > this.rtt_rto) {
-		// connection idle, restart slow start
-		this.cwnd = Math.min(this.initial_window, this.cwnd)
-	}
 	// TODO: count this in bytes?
 	if (this.window.length < this.cwnd) {
 		this.pending.push(chunk)
@@ -107,6 +106,36 @@ RPCOutStream.prototype.updateRTT = function(measuredRTT) {
 	}
 	this.rtt_rto = clamp_rto(RTT_RTOCALC(this))
 }
+RPCOutStream.prototype.RFC2861 = function() {
+	var tcpnow = Date.now()
+	if (tcpnow - this.T_Last >= this.rtt_rto) {
+		// the sender has been idle
+		this.ssthresh = Math.max(ssthresh, 3 * this.cwnd / 4)
+		for (var i = 0; i < (tcpnow - this.T_last)/this.rtt_rto; i++) {
+			cwnd = Math.max(this.cwnd / 2, 1)
+		}
+		this.T_prev = tcpnow
+		this.W_used = 0
+	}
+	this.T_last = tcpnow
+	if (this.window.length >= this.cwnd) {
+		// window is full
+		this.T_prev = tcpnow
+		this.W_used = 0
+	} else {
+		if (!(this.pending.length || this.resumeWrite)) {
+			// no more data is available to send
+			this.W_used = this.window.length
+			if (tcpnow - this.T_prev >= this.rtt_rto) {
+				// the sender has been application limited
+				this.ssthresh = Math.max(this.ssthresh, 3*this.cwnd/4)
+				this.cwnd = Math.max((this.cwnd + this.W_used) / 2, 1)
+				this.T_prev = tcpnow
+				this.W_used = 0
+			}
+		}
+	}
+} 
 RPCOutStream.prototype.flush = function() {
 	this.do_flush_soon = false
 	var out_size = this.MTU - 32
@@ -148,6 +177,7 @@ RPCOutStream.prototype.flush = function() {
 			size: this.MTU - out_size
 		})
 		this.last_send = Date.now()
+		this.RFC2861()
 	}
 	this.ack = 0
 	if(this.rtt_timer == null) this.setTimer()
