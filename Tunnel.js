@@ -57,6 +57,7 @@ function RPCOutStream(tunnel) {
 	this.rtt_rttvar = 750
 	this.rtt_rto = 3000
 	this.last_send = 0
+	this.rtt_timer = null
 	this.duplicate_acks = 0
 	stream.Writable.call(this, {
 		objectMode: true
@@ -143,24 +144,25 @@ RPCOutStream.prototype.flush = function() {
 	// do not do fancy things with ack packets.
 	if (seq != 0) {
 		this.window.push({time: Date.now(), seq: seq, pkt: outPacket,
-			rtt_nrexmt: 0, timer: null,
+			rtt_nrexmt: 0,
 			size: this.MTU - out_size
 		})
 		this.last_send = Date.now()
 	}
 	this.ack = 0
-	this.setTimer()
+	if(this.rtt_timer == null) this.setTimer()
 	if (this.pending.length) this.flush()
 }
 RPCOutStream.prototype.windowShift = function(ack) {
 	var ws
 	while(this.window.length && this.window[0].seq <= ack) {
 		ws = this.window.shift()
-		if (ws.timer != null) clearTimeout(ws.timer)
 		if (!ws.discount) this.updateRTT(Date.now() - ws.time)
 		this.cwnd_ack += ws.size
 	}
 	if (ws) {
+		// new data was acknowledged
+		this.setTimer()
 		if(this.cwnd <= this.ssthresh) {
 			// slow start
 			this.cwnd += 1
@@ -186,7 +188,7 @@ RPCOutStream.prototype.retransmit = function() {
 }
 RPCOutStream.prototype.timeout = function() {
 	this.rtt_rto *= 2 // backoff exponentially
-	this.window[0].timer = null
+	this.rtt_timer = null
 	if (this.window[0].rtt_nrexmt == 0) {
 		// adjust ssthresh
 		this.ssthresh = Math.max(this.window.length / 2, 2)
@@ -201,9 +203,12 @@ RPCOutStream.prototype.timeout = function() {
 	this.retransmit()
 }
 RPCOutStream.prototype.setTimer = function() {
+	if (this.rtt_timer != null) {
+		clearTimeout(this.rtt_timer)
+		this.rtt_timer = null
+	}
 	if (this.window.length == 0) return
-	if (this.window[0].timer) clearTimeout(this.window[0].timer)
-	this.window[0].timer = setTimeout(this.timeout.bind(this), this.rtt_rto)
+	this.rtt_timer = setTimeout(this.timeout.bind(this), this.rtt_rto)
 }
 RPCOutStream.prototype.gotPacket = function(seq, ack) {
 	if (ack != 0) {
