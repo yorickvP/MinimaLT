@@ -110,9 +110,9 @@ RPCOutStream.prototype.RFC2861 = function() {
 	var tcpnow = Date.now()
 	if (tcpnow - this.T_Last >= this.rtt_rto) {
 		// the sender has been idle
-		this.ssthresh = Math.max(ssthresh, 3 * this.cwnd / 4)
+		this.ssthresh = Math.max(this.ssthresh, 3 * this.cwnd / 4)
 		for (var i = 0; i < (tcpnow - this.T_last)/this.rtt_rto; i++) {
-			cwnd = Math.max(this.cwnd / 2, 1)
+			this.cwnd = Math.max(this.cwnd / 2, 1)
 		}
 		this.T_prev = tcpnow
 		this.W_used = 0
@@ -135,7 +135,7 @@ RPCOutStream.prototype.RFC2861 = function() {
 			}
 		}
 	}
-} 
+}
 RPCOutStream.prototype.flush = function() {
 	this.do_flush_soon = false
 	var out_size = this.MTU - 32
