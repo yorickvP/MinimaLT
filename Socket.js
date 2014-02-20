@@ -26,7 +26,6 @@ function Socket(port, ext_ip) {
 	var self = this
 	this.decoding_keys = []
 	this.socket.on('message', function(msg, rinfo) {
-		console.log('got message from', rinfo)
 		var pkt = packet.parsePacket(msg)
 		if (!self.tunnels.some(function(tun){
 			if (tun.TID.equal(pkt.TID)) {
