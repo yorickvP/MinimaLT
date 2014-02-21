@@ -20,10 +20,9 @@ function Socket(port, ext_ip) {
 	if (port) this.port = port
 	else this.port = ((Math.random()*(1<<15)) + (1<<15) - 1)|0
 	DEBUG("making new socket @ port", this.port)
-	var self = this 
+	var self = this
 	this.socket.bind(this.port)
 	this.acceptUnknown = false
-	var self = this
 	this.decoding_keys = []
 	this.socket.on('message', function(msg, rinfo) {
 		var pkt = packet.parsePacket(msg)
