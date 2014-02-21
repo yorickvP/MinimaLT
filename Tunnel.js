@@ -89,7 +89,7 @@ RPCOutStream.prototype.flushSoon = function() {
 	if (this.do_flush_soon) return
 	else {
 		this.do_flush_soon = true
-		process.nextTick(this.flush.bind(this))
+		setImmediate(this.flush.bind(this))
 	}
 }
 RPCOutStream.prototype.updateRTT = function(measuredRTT) {
@@ -174,7 +174,8 @@ RPCOutStream.prototype.flush = function() {
 	if (seq != 0) {
 		this.window.push({time: Date.now(), seq: seq, pkt: outPacket,
 			rtt_nrexmt: 0,
-			size: this.MTU - out_size
+			size: this.MTU - out_size,
+			connections: to_send.map(function(x) {return x.cid})
 		})
 		this.last_send = Date.now()
 		this.RFC2861()
@@ -184,10 +185,13 @@ RPCOutStream.prototype.flush = function() {
 	if (this.pending.length) this.flush()
 }
 RPCOutStream.prototype.windowShift = function(ack) {
-	var ws
+	var ws, tun = this.tun
 	while(this.window.length && this.window[0].seq <= ack) {
 		ws = this.window.shift()
 		if (!ws.discount) this.updateRTT(Date.now() - ws.time)
+		for(var i = 0; i < ws.connections.length; i++) {
+			tun.connections[ws.connections[i]].ackRPC()
+		}
 		this.cwnd_ack += ws.size
 	}
 	if (ws) {
@@ -314,7 +318,8 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 	}
 	this.connections = []
 	this.RPCOutStream = new RPCOutStream(this)
-	this.connections[0] = this.control = controlConnection(0, this)
+	this.control = controlConnection(0, this)
+	this.addConnection(this.control)
 }
 util.inherits(Tunnel, events.EventEmitter)
 Tunnel.prototype.make_key = function() {
@@ -346,24 +351,28 @@ Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 	if (!this.RPCOutStream.gotPacket(recv_pkt.payload.sequence, recv_pkt.payload.acknowledge)) return
 	DEBUG(self, "received", recv_pkt.payload.RPC.map(function(x) { return x.cid + ',' + x.rpc[0]}))
 	recv_pkt.payload.RPC.forEach(function(rpc) {
-		self.connections[rpc.cid].receive(rpc.rpc)
+		self.connections[rpc.cid].instream.write(rpc.rpc)
 	})
 }
 Tunnel.prototype.send_connect = function() {
 	this.control.callAdv(this.own_pubkey, null, "nextTid", this.TID, this.own_pubkey)
 }
+Tunnel.prototype.addConnection = function(connection) {
+	connection.outstream.pipe(this.RPCOutStream)
+	this.connections[connection.cid] = connection
+}
 Tunnel.prototype.create = function(servicename, rpcs) {
 	var con = new Connection(this.connections.length, this)
+	this.addConnection(con)
 	if (rpcs) con.setRPCs(rpcs)
 	this.control.call('create', con.cid, servicename)
-	this.connections[con.cid] = con
 	return con
 }
 Tunnel.prototype.createAuth = function(servicename, authkey, auth_msg, rpcs) {
 	var con = new Connection(this.connections.length, this)
+	this.addConnection(con)
 	if (rpcs) con.setRPCs(rpcs)
 	this.control.call('createAuth', con.cid, servicename, authkey, auth_msg)
-	this.connections[con.cid] = con
 	return con
 }
 Tunnel.prototype.reKey = function() {
@@ -422,7 +431,7 @@ Tunnel.fromFirstPacket = function(sock, recv_pkt, rinfo, own_keys) {
 module.exports = Tunnel
 
 function controlConnection(id, tunnel) {
-	var connection = new Connection(id, tunnel)
+	var connection = new Connection(id, tunnel, true)
 	connection.setRPCs({
 		nextTid: function(t, C_) {
 			assert.equal(connection.tunnel.client, false)
@@ -444,7 +453,7 @@ function controlConnection(id, tunnel) {
 			assert(typeof c == 'number')
 			assert(typeof y == 'string')
 			var con = new Connection(c, tunnel)
-			tunnel.connections[c] = con
+			tunnel.addConnection(con)
 			tunnel.emit('create', con, y, null, function(err, rpcs) {
 				con.init_cb(err, rpcs)
 			})
@@ -455,7 +464,7 @@ function controlConnection(id, tunnel) {
 			assert(Buffer.isBuffer(U))
 			assert(Buffer.isBuffer(x))
 			var con = new Connection(c, tunnel)
-			tunnel.connections[c] = con
+			tunnel.addConnection(con)
 			tunnel.emit('createAuth', con, y, U, x, function(err, rpcs) {
 				con.init_cb(err, rpcs)
 			})
@@ -497,6 +506,9 @@ function controlConnection(id, tunnel) {
 		},
 		puzzSoln: function(r, n_) {
 			this.tunnel.emit('puzzSoln', r, n_)
+		},
+		windowSize: function(c, n) {
+			tunnel.connections[c].setWindowSize(n)
 		}
 	})
 	return connection
