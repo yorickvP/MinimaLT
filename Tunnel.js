@@ -37,6 +37,7 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 	this.RPCOutStream = new CongestionStream(this)
 	this.control = controlConnection(0, this)
 	this.addConnection(this.control)
+	this.active = true
 }
 util.inherits(Tunnel, events.EventEmitter)
 Tunnel.prototype.make_key = function() {
@@ -64,6 +65,8 @@ Tunnel.prototype.recv_packet = function(recv_pkt, rinfo) {
 }
 Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 	var self = this
+	// do not receive any more packets on dead tunnnels
+	if (!this.active) return
 	recv_pkt.payload = packet.parsePayload(recv_pkt.payload)
 	if (!this.RPCOutStream.gotPacket(recv_pkt.payload.sequence, recv_pkt.payload.acknowledge)) return
 	DEBUG(self, "received", recv_pkt.payload.RPC.map(function(x) { return x.cid + ',' + x.rpc[0]}))
@@ -121,6 +124,15 @@ Tunnel.prototype.posePuzzle = function(puzzle_key, difficulty, cb) {
 			cb(false)
 		}
 	})
+}
+Tunnel.prototype.teardown = function() {
+	this.active = false
+	this.emit('teardown')
+	var self = this
+	this.connections.forEach(function(connection) {
+		connection.outstream.unpipe(self.RPCOutStream)
+	})
+	this.RPCOutStream.teardown()
 }
 
 

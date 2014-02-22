@@ -68,6 +68,9 @@ Socket.prototype.addTunnel = function(tun, ip, port) {
 		} catch(e) { return }
 		self.emit('giveCert', rec_certD, rec_ecertD, cb)
 	})
+	tun.on('teardown', function() {
+		self.tunnels = self.tunnels.filter(function(x) { return x != tun })
+	})
 	this.tunnels.push(tun)
 }
 Socket.prototype.makeTunECert = function(eCert) {
@@ -155,6 +158,7 @@ Socket.prototype.setDomainService = function(ip, port, certD) {
 	T1.control.callAdv(T1.own_pubkey, null, 'requestCert', certD.toIdentity().toBuffer())
 	var self = this
 	T1.once('giveCert', function(brec_certD, brec_ecertD) {
+		T1.teardown()
 		var rec_certD = certificate.Cert.fromBuffer(certD.signing, brec_certD)
 		var rec_ecertD = certificate.ECert.fromBuffer(certD.signing, brec_ecertD)
 		assert(certD.matches(rec_certD))
