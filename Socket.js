@@ -13,6 +13,14 @@ function DEBUG(str) {
 	console.log.apply(console, ["Socket:"].concat([].slice.call(arguments)))
 }
 
+function memcmp(a, b) {
+	if (a.length != b.length) return false
+	for (var i = 0; i < a.length; i++) {
+		if (a[i] != b[i]) return false
+	}
+	return true
+}
+
 function Socket(port, ext_ip) {
 	events.EventEmitter.call(this)
 	this.tunnels = []
@@ -33,7 +41,11 @@ function Socket(port, ext_ip) {
 			}
 			return false
 		})){
-			if(self.acceptUnknown) {
+			if(self.acceptUnknown && pkt.hasPubKey) {
+				// check if the pubkey isn't used anywhere
+				if (self.tunnels.some(function(tun) {
+					return tun.remote_pubkey && memcmp(tun.remote_pubkey, pkt.pubKey)
+				})) return
 				DEBUG("accepting new tunnel from", rinfo)
 				var tun = Tunnel.fromFirstPacket(self, pkt, rinfo, self.decoding_keys)
 				self.addTunnel(tun, rinfo.address, rinfo.port)
