@@ -145,14 +145,31 @@ Socket.prototype.listen = function(ext_ip, cert, signing, boxing, accept) {
 	this.long_signing = signing
 	this.long_boxing  = boxing
 	this.certificate = cert
-	this.rotateECert()
+	// these values should be configurable
+	this.rotateECert(1200, 150)
 }
-Socket.prototype.rotateECert = function() {
-	// TODO: actually rotate
+// make a new ECert, delete the old one after dns_ttl seconds
+// and do it again after `lifetime` seconds
+Socket.prototype.rotateECert = function(lifetime, dns_ttl) {
+	var self = this
+	if (this.ephemeral_certificate) {
+		var old_decoding = this.current_ephemeral_decoding
+		setTimeout(function() {
+			// remove the old key after the DNS TTL
+			self.decoding_keys = self.decoding_keys.filter(function(key) {
+				return !memcmp(old_decoding, key)
+			})
+		}, dns_ttl*1e3)
+	}
 	DEBUG('generating eCert')
-	var ecert = this.certificate.generateECert(this.long_signing, this.ext_ip, this.port, 0, 0, 12e5)
+	var ecert = this.certificate.generateECert(this.long_signing, this.ext_ip, this.port, 0, 0, lifetime*1e3)
 	this.decoding_keys.push(ecert.eBoxing)
+	this.current_ephemeral_decoding = ecert.eBoxing
 	this.ephemeral_certificate = ecert.eCert
+	this.emit('ecert', ecert.eCert)
+	setTimeout(function() {
+		self.rotateECert(lifetime, dns_ttl)
+	}, lifetime*1e3)
 }
 Socket.prototype.advertise = function(name_service, cb) {
 	var self = this
@@ -160,7 +177,9 @@ Socket.prototype.advertise = function(name_service, cb) {
 		var tun = self.makeTunECert(eCert)
 		tun.control.call('giveCert', self.certificate.toBuffer(), self.ephemeral_certificate.toBuffer())
 		tun.once('ok', cb)
-		// TODO: update on new ecert
+		self.on('ecert', function(ecert) {
+			tun.control.call('giveCert', self.certificate.toBuffer(), self.ephemeral_certificate.toBuffer())
+		})
 	})
 }
 Socket.prototype.setDomainService = function(ip, port, certD) {
