@@ -147,6 +147,8 @@ Socket.prototype.listen = function(ext_ip, cert, signing, boxing, accept) {
 	this.certificate = cert
 	// these values should be configurable
 	this.rotateECert(1200, 150)
+	this.puzzle_key = crypto.make_keypair().private
+	setTimeout(this.garbageCollect.bind(this), 120*1e3)
 }
 // make a new ECert, delete the old one after dns_ttl seconds
 // and do it again after `lifetime` seconds
@@ -197,6 +199,22 @@ Socket.prototype.setDomainService = function(ip, port, certD) {
 		self.domain_T2 = self.makeTunECert(rec_ecertD)
 		self.emit('domainservice')
 	})
+}
+// TODO: vary difficulty and interval based on server load
+Socket.prototype.garbageCollect = function() {
+	var self = this
+	this.tunnels.forEach(function(tun) {
+		var solved = false
+		// give the client a minute
+		var timeout = setTimeout(function() {
+			tun.teardown()
+		}, 60*1e3)
+		tun.posePuzzle(self.puzzle_key, 8, function(res) {
+			clearTimeout(timeout)
+			if (!res) return tun.teardown()
+		})
+	})
+	setTimeout(this.garbageCollect.bind(this), 120*1e3)
 }
 
 function make_sendpacket(socket, ip, port) {

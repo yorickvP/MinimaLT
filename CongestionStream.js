@@ -16,7 +16,7 @@ function DEBUG(tun, str) {
 var constants = {
 	RTT_RXTMIN: 1000, /* min retransmit timeout value */
 	RTT_RXTMAX: 60000, /* max retransmit timeout value, in microseconds */
-	RTT_MAXNREXMT: 3 /* max # times to retransmit */
+	RTT_MAXNREXMT: 5 /* max # times to retransmit */
 }
 
 function RTT_RTOCALC(ptr) {
@@ -65,6 +65,7 @@ function RPCOutStream(tunnel) {
 util.inherits(RPCOutStream, stream.Writable)
 RPCOutStream.prototype._write = function(chunk, encoding, callback) {
 	chunk.size = RPC.rpc_payload_length([chunk])
+	chunk.TID = this.tun.TID
 	if (!this.active) return callback()
 	// TODO: count this in bytes?
 	if (this.window.length < this.cwnd) {
@@ -225,7 +226,7 @@ RPCOutStream.prototype.timeout = function() {
 		this.cwnd = 1
 	}
 	if (++this.window[0].rtt_nrexmt > constants.RTT_MAXNREXMT) {
-		this.emit('error', "retransmit count reached")
+		this.emit('timeout', "retransmit count reached")
 		return
 	}
 	// don't count lost packets

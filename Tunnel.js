@@ -38,6 +38,7 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 	this.control = controlConnection(0, this)
 	this.addConnection(this.control)
 	this.active = true
+	this.RPCOutStream.on('timeout', this.teardown.bind(this))
 }
 util.inherits(Tunnel, events.EventEmitter)
 Tunnel.prototype.make_key = function() {
