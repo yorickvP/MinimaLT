@@ -83,13 +83,16 @@ Socket.prototype.addTunnel = function(tun, ip, port) {
 	tun.on('teardown', function() {
 		self.tunnels = self.tunnels.filter(function(x) { return x != tun })
 	})
+	tun.on('rekey', function(newTun) {
+		self.addTunnel(newTun, ip, port)
+	})
 	this.tunnels.push(tun)
 }
 Socket.prototype.makeTunECert = function(eCert) {
 	assert.equal(eCert.version, 0)
 	assert.equal(eCert.padding, 0)
 	DEBUG('connecting to', eCert.ip, ':', eCert.port, '(eCert)')
-	var tun = new Tunnel(eCert.eBoxing)
+	var tun = Tunnel.clientTunnel(eCert.eBoxing)
 	this.addTunnel(tun, eCert.ip, eCert.port)
 	tun.send_connect()
 	return tun
@@ -186,7 +189,7 @@ Socket.prototype.advertise = function(name_service, cb) {
 }
 Socket.prototype.setDomainService = function(ip, port, certD) {
 	DEBUG('connecting to domain service', ip, ':', port)
-	var T1 = new Tunnel(certD.boxing)
+	var T1 = Tunnel.clientTunnel(certD.boxing)
 	this.addTunnel(T1, ip, port)
 	T1.control.callAdv(T1.own_pubkey, null, 'requestCert', certD.toIdentity().toBuffer())
 	var self = this

@@ -204,6 +204,9 @@ RPCOutStream.prototype.windowShift = function(ack) {
 			this.cwnd_ack = 0
 		}
 		console.log('cwnd', this.cwnd, this.ssthresh)
+		if (this.window.length == 0) {
+			this.emit('empty')
+		}
 	}
 	// resume writing now
 	// TODO: count window in bytes?

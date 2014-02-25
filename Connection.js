@@ -66,6 +66,7 @@ Connection.prototype.receive = function(rpc){
 	if (this.initialized) {
 		var name = rpc[0]
 		var args = rpc.slice(1)
+		this.last_recv_TID = rpc.TID
 		if (this.rpc[name]) this.rpc[name].apply(this, args)
 		// else fail?
 	} else {

@@ -16,7 +16,7 @@ function DEBUG(tun, str) {
 		[].slice.call(arguments, 1)))
 }
 
-function Tunnel(remote_pubkey, own_keys, TID) {
+function Tunnel(is_client, remote_pubkey, own_pubkey, secret, TID) {
 	events.EventEmitter.call(this)
 	if (TID) {
 		this.TID = TID
@@ -25,14 +25,9 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 		this.TID.buffer[0] &= 0x3F // leave out the two upper bits, we're using those
 	}
 	this.remote_pubkey = remote_pubkey
-	if (own_keys) {
-		this.client = false
-		this.generate_secret(own_keys.private)
-		this.own_pubkey = own_keys.public
-	} else {
-		this.client = true
-		this.make_key()
-	}
+	this.own_pubkey = own_pubkey
+	this.client = is_client
+	this.secret = secret
 	this.connections = []
 	this.RPCOutStream = new CongestionStream(this)
 	this.control = controlConnection(0, this)
@@ -41,24 +36,15 @@ function Tunnel(remote_pubkey, own_keys, TID) {
 	this.RPCOutStream.on('timeout', this.teardown.bind(this))
 }
 util.inherits(Tunnel, events.EventEmitter)
-Tunnel.prototype.make_key = function() {
-	DEBUG(this, "generating C'")
+function make_client_key(remote_pubkey) {
 	var keypair = crypto.make_keypair()
-	this.own_pubkey = keypair.public
-	// XXX: should use a clock that doesn't
-	// change when the system one does
-	this.key_time = Date.now()
-	this.generate_secret(keypair.private)
+	var own_pubkey = keypair.public
+	var secret = crypto.shared_secret(remote_pubkey, keypair.private)
 	// throw away the private key, we don't need it
 	for(var i = 0; i < keypair.private.length; i++) {
 		keypair.private[i] = 0
 	}
-}
-Tunnel.prototype.generate_secret = function(privkey) {
-	this.secret = crypto.shared_secret(this.remote_pubkey, privkey)
-}
-Tunnel.prototype.hash_secret = function() {
-	this.secret = crypto.hashSecret(this.secret)
+	return {own_pubkey: own_pubkey, secret: secret}
 }
 Tunnel.prototype.recv_packet = function(recv_pkt, rinfo) {
 	recv_pkt.payload = crypto.unbox(recv_pkt.payload, crypto.make_nonce(recv_pkt.TID, recv_pkt.nonce), this.secret)
@@ -71,7 +57,9 @@ Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 	recv_pkt.payload = packet.parsePayload(recv_pkt.payload)
 	if (!this.RPCOutStream.gotPacket(recv_pkt.payload.sequence, recv_pkt.payload.acknowledge)) return
 	DEBUG(self, "received", recv_pkt.payload.RPC.map(function(x) { return x.cid + ',' + x.rpc[0]}))
+	this.emit('gotpacket', recv_pkt)
 	recv_pkt.payload.RPC.forEach(function(rpc) {
+		rpc.rpc.TID = recv_pkt.TID
 		self.connections[rpc.cid].instream.write(rpc.rpc)
 	})
 }
@@ -101,15 +89,42 @@ Tunnel.prototype.reKey = function() {
 	var TID = crypto.random_Int64()
 	TID.buffer[0] &= 0x3F // leave out the two upper bits, we're using those
 	var pubkey = crypto.make_keypair().public
-	this.control.call('nextTid', TID, pubkey)
-	//this.flush_rpcs()
-	// TODO: don't lose everything the server sends
-	// between now and when it recieves the packet
-	// maybe keep this tunnel open for a while?
-	// or resend...
-	this.TID = TID
-	this.hash_secret()
-	this.control.callAdv(pubkey, null, 'nextTid', TID, pubkey)
+	this.RPCOutStream.write({
+		cid: this.control.cid,
+		rpc: ['nextTid', TID, pubkey]
+	})
+	var oldTun = this
+	var was_empty = false
+	var oldOUT = this.RPCOutStream
+	this.connections.forEach(function(con) {
+		con.unpipe(oldOUT)
+	})
+	var newTun = Tunnel.fromRekey(this, crypto.hashSecret(this.secret), TID)
+	// replace its connections with the new tunnel
+	newTun.control.outstream.unpipe(newTun.RPCOutStream)
+	newTun.control = oldTun.control
+	newTun.connections = oldTun.connections
+	oldTun.emit('rekey', newTun)
+	// do not send any data yet
+	newTun.RPCOutStream.cwnd = 0
+	newTun.control.callAdv(pubkey, null, 'nextTid', TID, pubkey)
+	this.connections.forEach(function(con) {
+		con.tunnel = newTun
+	})
+	newTun.control = oldTun.control
+	// we just wrote to it, so it can't be empty now
+	oldOUT.once('empty', function() {
+		was_empty = true
+		oldTun.teardown()
+		newTun.RPCOutStream.cwnd = oldOUT.cwnd
+		// XXX copy RTT info?
+		newTun.RPCOutStream.resumeWrite()
+	})
+	oldOUT.once('teardown', function() {
+		if (!was_empty) {
+			newTun.teardown()
+		}
+	})
 }
 Tunnel.prototype.requestRekey = function() {
 	this.control.call('rekeyNow')
@@ -152,10 +167,18 @@ Tunnel.fromFirstPacket = function(sock, recv_pkt, rinfo, own_keys) {
 		}
 		return true
 	}))	{
-		tun = new Tunnel(recv_pkt.pubKey, key, recv_pkt.TID)
+		tun = new Tunnel(false, recv_pkt.pubKey, key.public, crypto.shared_secret(recv_pkt.pubKey, key.private), recv_pkt.TID)
 		return tun
 	}
 	else throw err
+}
+Tunnel.clientTunnel = function(key) {
+	var keys = make_client_key(key)
+	return new Tunnel(true, key, keys.own_pubkey, keys.secret)
+}
+Tunnel.fromRekey = function(oldTun, secret, TID) {
+	var newTun = new Tunnel(oldTun.client, oldTun.remote_pubkey, oldTun.own_pubkey, secret, TID)
+	return newTun
 }
 
 module.exports = Tunnel
@@ -172,19 +195,19 @@ function controlConnection(id, tunnel) {
 				void 0
 			} else {
 				// do not flush rpcs here, client already changed TID
-				tunnel.TID = t
-				tunnel.hash_secret()
+				this.tunnel.TID = t
+				this.tunnel.hash_secret()
 			}
 		},
 		rekeyNow: function() {
-			tunnel.reKey()
+			this.tunnel.reKey()
 		},
 		create: function(c, y) {
 			assert(typeof c == 'number')
 			assert(typeof y == 'string')
-			var con = new Connection(c, tunnel)
-			tunnel.addConnection(con)
-			tunnel.emit('create', con, y, null, function(err, rpcs) {
+			var con = new Connection(c, this.tunnel)
+			this.tunnel.addConnection(con)
+			this.tunnel.emit('create', con, y, null, function(err, rpcs) {
 				con.init_cb(err, rpcs)
 			})
 		},
@@ -193,24 +216,24 @@ function controlConnection(id, tunnel) {
 			assert(typeof y == 'string')
 			assert(Buffer.isBuffer(U))
 			assert(Buffer.isBuffer(x))
-			var con = new Connection(c, tunnel)
-			tunnel.addConnection(con)
-			tunnel.emit('createAuth', con, y, U, x, function(err, rpcs) {
+			var con = new Connection(c, this.tunnel)
+			this.tunnel.addConnection(con)
+			this.tunnel.emit('createAuth', con, y, U, x, function(err, rpcs) {
 				con.init_cb(err, rpcs)
 			})
 		},
 		ack: function(c) {
-			tunnel.connections[c].emit('ack')
+			this.tunnel.connections[c].emit('ack')
 		},
 		refuse: function(c) {
-			tunnel.connections[c].emit('refuse')
+			this.tunnel.connections[c].emit('refuse')
 		},
 		close: function(c) {
-			tunnel.connections[c].emit('close')
+			this.tunnel.connections[c].emit('close')
 		},
 		requestCert: function(S) {
 			assert(Buffer.isBuffer(S))
-			tunnel.emit('requestCert', S, function(err, cert, eCert) {
+			this.tunnel.emit('requestCert', S, function(err, cert, eCert) {
 				if (err) {
 					// TODO: handle error
 					void 0
@@ -222,23 +245,23 @@ function controlConnection(id, tunnel) {
 		},
 		giveCert: function(certS, ecertS) {
 			// TODO: certS -> S
-			tunnel.emit('giveCert', certS, ecertS, function(err) {
+			this.tunnel.emit('giveCert', certS, ecertS, function(err) {
 				if (!err) connection.call('ok')
 			})
 		},
 		ok: function() {
-			tunnel.emit('ok')
+			this.tunnel.emit('ok')
 		},
 		puzz: function(q, H_r, w, n_) {
 			var In_ = new Int64(n_)
-			var r = auth.solvePuzzleDecoded(tunnel.TID, q, H_r, w, In_)
+			var r = auth.solvePuzzleDecoded(this.last_recv_TID, q, H_r, w, In_)
 			connection.call('puzzSoln', r, n_)
 		},
 		puzzSoln: function(r, n_) {
 			this.tunnel.emit('puzzSoln', r, n_)
 		},
 		windowSize: function(c, n) {
-			tunnel.connections[c].setWindowSize(n)
+			this.tunnel.connections[c].setWindowSize(n)
 		}
 	})
 	return connection
