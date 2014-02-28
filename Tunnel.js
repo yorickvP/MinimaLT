@@ -97,7 +97,7 @@ Tunnel.prototype.reKey = function() {
 	var was_empty = false
 	var oldOUT = this.RPCOutStream
 	this.connections.forEach(function(con) {
-		con.unpipe(oldOUT)
+		con.outstream.unpipe(oldOUT)
 	})
 	var newTun = Tunnel.fromRekey(this, crypto.hashSecret(this.secret), TID)
 	// replace its connections with the new tunnel
@@ -107,17 +107,24 @@ Tunnel.prototype.reKey = function() {
 	oldTun.emit('rekey', newTun)
 	// do not send any data yet
 	newTun.RPCOutStream.cwnd = 0
-	newTun.control.callAdv(pubkey, null, 'nextTid', TID, pubkey)
 	this.connections.forEach(function(con) {
 		con.tunnel = newTun
+		newTun.addConnection(con)
 	})
 	newTun.control = oldTun.control
+	newTun.control.callAdv(pubkey, null, 'nextTid', TID, pubkey)
 	// we just wrote to it, so it can't be empty now
 	oldOUT.once('empty', function() {
 		was_empty = true
 		oldTun.teardown()
-		newTun.RPCOutStream.cwnd = oldOUT.cwnd
+		// this cannot be the old cwnd, because that would allow
+		// a reflection attack where the client changes IPs during
+		// a rekey just before requesting a big amount of data
+		// while the window is big.
+		newTun.RPCOutStream.cwnd = 2
 		// XXX copy RTT info?
+		// do not check if there's a resumeWrite, there should be
+		// if there's not something is really wrong
 		newTun.RPCOutStream.resumeWrite()
 	})
 	oldOUT.once('teardown', function() {
@@ -193,10 +200,60 @@ function controlConnection(id, tunnel) {
 			if (t.equal(connection.tunnel.TID)) {
 				// TODO compare the C_ with the one in the packet
 				void 0
+				this.tunnel.emit('confirmTid')
 			} else {
-				// do not flush rpcs here, client already changed TID
-				this.tunnel.TID = t
-				this.tunnel.hash_secret()
+				var oldTun = this.tunnel
+				var was_empty = false
+				var was_confirmed = false
+				var oldOUT = oldTun.RPCOutStream
+				oldTun.connections.forEach(function(con) {
+					con.outstream.unpipe(oldOUT)
+				})
+				var newTun = Tunnel.fromRekey(oldTun, crypto.hashSecret(oldTun.secret), t)
+				// replace its connections with the new tunnel
+				newTun.control.outstream.unpipe(newTun.RPCOutStream)
+				newTun.control = oldTun.control
+				newTun.connections = oldTun.connections
+				oldTun.emit('rekey', newTun)
+				// do not send any data yet
+				newTun.RPCOutStream.cwnd = 0
+				//newTun.control.callAdv(pubkey, null, 'nextTid', TID, pubkey)
+				oldTun.connections.forEach(function(con) {
+					con.tunnel = newTun
+					newTun.addConnection(con)
+				})
+				newTun.control = oldTun.control
+				// we just wrote to it, so it can't be empty now
+				oldOUT.once('empty', function() {
+					was_empty = true
+					oldTun.teardown()
+					onemptyconfirm()
+				})
+				if (oldOUT.window.length == 0) {
+					was_empty = true
+					oldTun.teardown()
+					onemptyconfirm()
+				}
+				oldOUT.once('teardown', function() {
+					if (!was_empty || !was_confirmed) {
+						newTun.teardown()
+					}
+				})
+				newTun.once('confirmTid', function() {
+					was_confirmed = true
+					onemptyconfirm()
+				})
+			}
+			function onemptyconfirm() {
+				if (was_empty && was_confirmed) {
+					// this cannot be the old cwnd, because that would allow
+					// a reflection attack where the client changes IPs during
+					// a rekey just before requesting a big amount of data
+					// while the window is big.
+					newTun.RPCOutStream.cwnd = 2
+					// XXX copy RTT info?
+					if (newTun.RPCOutStream.resumeWrite) newTun.RPCOutStream.resumeWrite()
+				}
 			}
 		},
 		rekeyNow: function() {
