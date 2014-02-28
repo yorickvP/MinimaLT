@@ -99,7 +99,7 @@ function WindowedOutStream(options) {
 }
 
 WindowedOutStream.prototype._transform = function(chunk, encoding, cb) {
-	var self = this 
+	var self = this
 	function checkwrite() {
 		if (self.window_size > 0) {
 			cb(null, chunk)
