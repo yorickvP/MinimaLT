@@ -42,6 +42,12 @@ function Tunnel(is_client, remote_pubkey, own_pubkey, secret, TID) {
 	this.addConnection(this.control)
 	this.active = true
 	this.RPCOutStream.on('timeout', this.teardown.bind(this))
+	var self = this
+	// do a rekey every 10 minutes (+ up to 20 seconds to make sure the client and server don't do it at the same time)
+	this.rekey_timer = setTimeout(function() {
+		if (self.client) self.reKey()
+		else self.requestRekey()
+	}, 600*1e3+Math.random()*20*1e3)
 }
 util.inherits(Tunnel, events.EventEmitter)
 function make_client_key(remote_pubkey) {
@@ -165,6 +171,7 @@ Tunnel.prototype.teardown = function() {
 		connection.outstream.unpipe(self.RPCOutStream)
 	})
 	this.RPCOutStream.teardown()
+	clearTimeout(this.rekey_timer)
 }
 
 
