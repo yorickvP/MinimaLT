@@ -295,13 +295,11 @@ function controlConnection(id, tunnel) {
 					// TODO: handle error
 					void 0
 				} else {
-					// TODO: S -> cert
 					connection.call('giveCert', cert, eCert)
 				}
 			})
 		},
 		giveCert: function(certS, ecertS) {
-			// TODO: certS -> S
 			this.tunnel.emit('giveCert', certS, ecertS, function(err) {
 				if (!err) connection.call('ok')
 			})
