@@ -16,6 +16,14 @@ function DEBUG(tun, str) {
 		[].slice.call(arguments, 1)))
 }
 
+function memcmp(a, b) {
+	if (a.length != b.length) return false
+	for (var i = 0; i < a.length; i++) {
+		if (a[i] != b[i]) return false
+	}
+	return true
+}
+
 function Tunnel(is_client, remote_pubkey, own_pubkey, secret, TID) {
 	events.EventEmitter.call(this)
 	if (TID) {
@@ -60,6 +68,7 @@ Tunnel.prototype.recv_decrypted_packet = function(recv_pkt) {
 	this.emit('gotpacket', recv_pkt)
 	recv_pkt.payload.RPC.forEach(function(rpc) {
 		rpc.rpc.TID = recv_pkt.TID
+		if (recv_pkt.pubKey) rpc.rpc.pubKey = recv_pkt.pubKey
 		self.connections[rpc.cid].instream.write(rpc.rpc)
 	})
 }
@@ -198,8 +207,10 @@ function controlConnection(id, tunnel) {
 			assert.ok(t instanceof Int64)
 			assert.ok(Buffer.isBuffer(C_))
 			if (t.equal(connection.tunnel.TID)) {
-				// TODO compare the C_ with the one in the packet
-				void 0
+				if (!memcmp(this.last_recv_pubKey, C_)) {
+					// ignore packet, it's fake
+					return
+				}
 				this.tunnel.emit('confirmTid')
 			} else {
 				var oldTun = this.tunnel
